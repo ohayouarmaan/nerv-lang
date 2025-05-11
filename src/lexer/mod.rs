@@ -6,6 +6,7 @@ use crate::shared::{
 };
 
 #[allow(dead_code)]
+#[derive(Debug, Clone, Copy)]
 pub struct Lexer<'a> {
     source_code: &'a str,
     current_index: usize,
@@ -19,7 +20,7 @@ impl<'a> Lexer<'a> {
         Self {
             source_code,
             current_index: 0,
-            current_line: 0,
+            current_line: 1,
             current_column: 0
         }
     }
@@ -34,6 +35,7 @@ impl<'a> Lexer<'a> {
     fn advance(&mut self) -> Result<(), LexerError> {
         if self.can_move() {
             self.current_index += 1;
+            self.current_column += 1;
             return Ok(())
         }
         Err(LexerError::CalledNextAfterExhaustion)
@@ -46,6 +48,25 @@ impl<'a> Lexer<'a> {
             token_type: tt,
             position: Position::new(self.current_line, self.current_column),
             lexeme: (lexeme_start, lexeme_ending)
+        })
+    }
+
+    fn get_current_character(&self) -> Result<char, LexerError> {
+        self.source_code.chars().nth(self.current_index).ok_or(LexerError::IllegalCharacterAccess)
+    }
+
+    fn generate_string(&mut self, lexeme_start: usize) -> Option<Token> {
+        self.advance().ok()?;
+        let starting_column = self.current_column;
+        while self.can_move() && self.get_current_character().ok()? != '"' {
+            self.advance().ok()?;
+        }
+        self.advance().ok()?;
+        let lexeme_end = self.current_index;
+        Some(Token {
+            token_type: TokenType::String,
+            position: Position::new(self.current_line, starting_column),
+            lexeme: (lexeme_start, lexeme_end)
         })
     }
 }
@@ -63,20 +84,31 @@ impl Iterator for Lexer<'_> {
                         self.current_column = 0;
                         self.advance().ok()?
                     }
+
+                    // Operators
                     '+' => return self.generate_operator(lexeme_start, TokenType::Plus),
                     '-' => return self.generate_operator(lexeme_start, TokenType::Minus),
                     '/' => return self.generate_operator(lexeme_start, TokenType::Slash),
                     '*' => return self.generate_operator(lexeme_start, TokenType::Star),
+
                     'a' ..= 'z' | 'A' ..= 'Z' | '_' => {
                         todo!("Create keyword here.");
                     }
-                    '"' => {
-                        todo!("Create string here.");
-                    }
+                    '"' => return self.generate_string(lexeme_start),
                     '0' ..= '9' => {
                         todo!("Create number here.");
                     }
-                    '\0' => {}
+                    '\0' => {
+                        self.current_column += 1;
+                        return Some(Token{
+                            token_type: TokenType::Eof,
+                            position: Position::new(
+                                self.current_line,
+                                self.current_column
+                            ),
+                            lexeme: (self.current_index, self.current_index)
+                        })
+                    },
                     _ => {}
                 }
             }
@@ -85,3 +117,40 @@ impl Iterator for Lexer<'_> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lexing_operators() {
+        let test = "+\0";
+        let mut lex = Lexer::new(test);
+        if let Some(token1) = lex.next() {
+            assert_eq!(token1.token_type, TokenType::Plus);
+            assert_eq!(token1.position.line, 1);
+            assert_eq!(token1.position.column, 1);
+        }
+        if let Some(token2) = lex.next() {
+            assert_eq!(token2.token_type, TokenType::Eof);
+            assert_eq!(token2.position.line, 1);
+            assert_eq!(token2.position.column, 2);
+        }
+    }
+
+    #[test]
+    fn lexing_strings() {
+        let test = "\"Hello, World!\"\0";
+        let mut lex = Lexer::new(test);
+        if let Some(string_token) = lex.next() {
+            assert_eq!(string_token.token_type, TokenType::String);
+            assert_eq!(&test[string_token.lexeme.0..string_token.lexeme.1], "\"Hello, World!\"");
+            assert_eq!(string_token.position.line, 1);
+            assert_eq!(string_token.position.column, 1);
+        }
+        if let Some(eof_token) = lex.next() {
+            assert_eq!(eof_token.token_type, TokenType::Eof);
+            assert_eq!(eof_token.position.line, 1);
+            assert_eq!(eof_token.position.column, 16);
+        }
+    }
+}

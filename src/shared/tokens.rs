@@ -55,6 +55,7 @@ pub enum TokenType {
 }
 
 #[allow(dead_code)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Token {
     pub token_type: TokenType,
     pub position: Position,

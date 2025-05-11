@@ -1,3 +1,4 @@
 pub enum LexerError {
-    CalledNextAfterExhaustion
+    CalledNextAfterExhaustion,
+    IllegalCharacterAccess
 }

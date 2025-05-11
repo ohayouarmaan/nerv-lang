@@ -1,8 +1,8 @@
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Position {
-    line: usize,
-    column: usize
+    pub line: usize,
+    pub column: usize
 }
 
 #[allow(dead_code)]
