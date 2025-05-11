@@ -56,9 +56,10 @@ pub enum TokenType {
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Token {
+pub struct Token<T> {
     pub token_type: TokenType,
     pub position: Position,
-    pub lexeme: (usize, usize)
+    pub lexeme: (usize, usize),
+    pub meta_data: T
 }
 

@@ -1,5 +1,5 @@
 use crate::shared::{
-    errors::LexerError, positions::Position, tokens::{
+    errors::LexerError, meta::{AnyMetadata, NumberMetaData, StringMetadata}, positions::Position, tokens::{
         Token,
         TokenType
     }
@@ -13,6 +13,7 @@ pub struct Lexer<'a> {
     current_line: usize,
     current_column: usize,
 }
+
 
 #[allow(dead_code)]
 impl<'a> Lexer<'a> {
@@ -41,13 +42,14 @@ impl<'a> Lexer<'a> {
         Err(LexerError::CalledNextAfterExhaustion)
     }
 
-    fn generate_operator(&mut self, lexeme_start: usize, tt: TokenType) -> Option<Token> {
+    fn generate_operator(&mut self, lexeme_start: usize, tt: TokenType) -> Option<Token<AnyMetadata<'a>>> {
         self.advance().ok()?;
         let lexeme_ending = self.current_index;
         Some(Token {
             token_type: tt,
             position: Position::new(self.current_line, self.current_column),
-            lexeme: (lexeme_start, lexeme_ending)
+            lexeme: (lexeme_start, lexeme_ending),
+            meta_data: AnyMetadata::None
         })
     }
 
@@ -55,7 +57,7 @@ impl<'a> Lexer<'a> {
         self.source_code.chars().nth(self.current_index).ok_or(LexerError::IllegalCharacterAccess)
     }
 
-    fn generate_string(&mut self, lexeme_start: usize) -> Option<Token> {
+    fn generate_string(&mut self, lexeme_start: usize) -> Option<Token<AnyMetadata<'a>>> {
         self.advance().ok()?;
         let starting_column = self.current_column;
         while self.can_move() && self.get_current_character().ok()? != '"' {
@@ -66,13 +68,43 @@ impl<'a> Lexer<'a> {
         Some(Token {
             token_type: TokenType::String,
             position: Position::new(self.current_line, starting_column),
-            lexeme: (lexeme_start, lexeme_end)
+            lexeme: (lexeme_start, lexeme_end),
+            meta_data: AnyMetadata::String(StringMetadata {
+                value: &self.source_code[lexeme_start..lexeme_end]
+            })
+        })
+    }
+
+    fn generate_number(&mut self, lexeme_start: usize) -> Result<Token<AnyMetadata<'a>>, LexerError> {
+        let starting_column = self.current_column;
+        while self.can_move() {
+            if let Ok(c) = self.get_current_character() {
+                if c.is_ascii_digit() || c == '_' {
+                   self.advance().map_err(|_| LexerError::UnexpectedEof)?;
+                } else {
+                    break;
+                }
+            }
+        }
+        let value = match self.source_code[lexeme_start..self.current_column].parse::<u64>() {
+            Ok(x) => x,
+            Err(_) => {
+                return Err(LexerError::IllegalNumber);
+            }
+        };
+        Ok(Token {
+            token_type: TokenType::Number,
+            position: Position::new(self.current_line, starting_column),
+            lexeme: (lexeme_start, self.current_index),
+            meta_data: AnyMetadata::Number(NumberMetaData {
+                value
+            })
         })
     }
 }
 
-impl Iterator for Lexer<'_> {
-    type Item = Token;
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Token<AnyMetadata<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let lexeme_start = self.current_index;
@@ -95,9 +127,7 @@ impl Iterator for Lexer<'_> {
                         todo!("Create keyword here.");
                     }
                     '"' => return self.generate_string(lexeme_start),
-                    '0' ..= '9' => {
-                        todo!("Create number here.");
-                    }
+                    '0' ..= '9' => return self.generate_number(lexeme_start).ok(),
                     '\0' => {
                         self.current_column += 1;
                         return Some(Token{
@@ -106,7 +136,8 @@ impl Iterator for Lexer<'_> {
                                 self.current_line,
                                 self.current_column
                             ),
-                            lexeme: (self.current_index, self.current_index)
+                            lexeme: (self.current_index, self.current_index),
+                            meta_data: AnyMetadata::None
                         })
                     },
                     _ => {}
@@ -151,6 +182,23 @@ mod tests {
             assert_eq!(eof_token.token_type, TokenType::Eof);
             assert_eq!(eof_token.position.line, 1);
             assert_eq!(eof_token.position.column, 16);
+        }
+    }
+
+    #[test]
+    fn lexing_numbers() {
+        let test = "12_00_00_000\0";
+        let mut lex = Lexer::new(test);
+        if let Some(number_token) = lex.next() {
+            assert_eq!(number_token.token_type, TokenType::Number);
+            assert_eq!(&test[number_token.lexeme.0..number_token.lexeme.1], "12_00_00_000");
+            assert_eq!(number_token.position.line, 1);
+            assert_eq!(number_token.position.column, 0);
+        }
+        if let Some(eof_token) = lex.next() {
+            assert_eq!(eof_token.token_type, TokenType::Eof);
+            assert_eq!(eof_token.position.line, 1);
+            assert_eq!(eof_token.position.column, 13);
         }
     }
 }
