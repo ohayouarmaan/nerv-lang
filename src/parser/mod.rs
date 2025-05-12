@@ -1,11 +1,7 @@
 use crate::{
     lexer::Lexer,
     shared::{
-        meta::{
-            AnyMetadata,
-            NumberMetaData
-        },
-        positions::Position,
+        meta::AnyMetadata,
         parser_nodes::{
             BinaryExpression,
             Expression,
@@ -131,39 +127,54 @@ mod tests {
     
     #[test]
     fn check_parsing_expression() {
-        let source_code = "5 + 4\0";
+        let source_code = "5 + 4 * 0\0";
         let mut parser = Parser::new(source_code);
         let program = parser.parse();
 
         assert_eq!(program.stmts.len(), 1);
 
         match &program.stmts[0] {
-            Expression::Binary(binary_expr) => {
-                match *binary_expr.left {
+            Expression::Binary(add_expr) => {
+                match *add_expr.left {
                     Expression::Literal(ref lit) => {
                         match lit.value.meta_data {
                             AnyMetadata::Number(num) => assert_eq!(num.value, 5),
-                            _ => panic!("Expected number metadata on left"),
+                            _ => panic!("Expected number metadata on left of '+'"),
                         }
                     },
-                    _ => panic!("Expected literal on left"),
+                    _ => panic!("Expected literal on left of '+'"),
                 }
 
-                // Check operator is '+'
-                assert_eq!(binary_expr.operator.token_type, TokenType::Plus);
+                assert_eq!(add_expr.operator.token_type, TokenType::Plus);
 
-                // Check right is a literal "4"
-                match *binary_expr.right {
-                    Expression::Literal(ref lit) => {
-                        match lit.value.meta_data {
-                            AnyMetadata::Number(num) => assert_eq!(num.value, 4),
-                            _ => panic!("Expected number metadata on right"),
+                match *add_expr.right {
+                    Expression::Binary(ref mul_expr) => {
+                        match *mul_expr.left {
+                            Expression::Literal(ref lit) => {
+                                match lit.value.meta_data {
+                                    AnyMetadata::Number(num) => assert_eq!(num.value, 4),
+                                    _ => panic!("Expected number metadata on left of '*'"),
+                                }
+                            },
+                            _ => panic!("Expected literal on left of '*'"),
+                        }
+
+                        assert_eq!(mul_expr.operator.token_type, TokenType::Star);
+
+                        match *mul_expr.right {
+                            Expression::Literal(ref lit) => {
+                                match lit.value.meta_data {
+                                    AnyMetadata::Number(num) => assert_eq!(num.value, 0),
+                                    _ => panic!("Expected number metadata on right of '*'"),
+                                }
+                            },
+                            _ => panic!("Expected literal on right of '*'"),
                         }
                     },
-                    _ => panic!("Expected literal on right"),
+                    _ => panic!("Expected binary '*' expression on right of '+'"),
                 }
             },
-            _ => panic!("Expected binary expression at root"),
+            _ => panic!("Expected binary '+' expression at root"),
         }
     }
 }
