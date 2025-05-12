@@ -1,7 +1,7 @@
 use super::{meta::AnyMetadata, tokens::Token};
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expression<'a> {
     Binary(BinaryExpression<'a>),
     Unary(UnaryExpression<'a>),
@@ -9,7 +9,7 @@ pub enum Expression<'a> {
 }
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BinaryExpression<'a> {
     pub left: Box<Expression<'a>>,
     pub operator: Token<AnyMetadata<'a>>,
@@ -17,7 +17,7 @@ pub struct BinaryExpression<'a> {
 }
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnaryExpression<'a> {
     pub operator: Token<AnyMetadata<'a>>,
     pub value: Box<Expression<'a>>,
@@ -25,13 +25,13 @@ pub struct UnaryExpression<'a> {
 
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LiteralExpression<'a> {
     pub value: Token<AnyMetadata<'a>>
 }
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Program<'a> {
     //TODO: until we reach statements this will hold expressions, but after that it shall hold
     //statements

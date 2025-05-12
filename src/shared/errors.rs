@@ -6,3 +6,9 @@ pub enum LexerError {
     UnexpectedEof,
     IllegalKeyword
 }
+
+#[derive(Debug)]
+pub enum CompilerError {
+    IllegalOutputFile,
+    CanNotWrite,
+}
