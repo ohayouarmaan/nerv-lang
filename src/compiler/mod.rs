@@ -96,10 +96,9 @@ impl<'a> Compiler<'a> {
 #[cfg(test)]
 mod tests {
     use std::io::Write;
-
     use crate::parser::Parser;
-
     use super::*;
+
     #[test]
     fn check_simple_arithmetic() {
         let mut p = Parser::new("5 + 4 * 3\0");
@@ -109,10 +108,26 @@ mod tests {
             Err(e) => panic!("{:?}", e)
         };
         let _ = c.compile();
+        let correct = vec![
+            "global _start\n",
+            "_start:\n",
+            "\tmov rax, 5\n",
+            "\tpush rax\n",
+            "\tmov rax, 4\n",
+            "\tpush rax\n",
+            "\tmov rax, 3\n",
+            "\tpop rbx\n",
+            "\timul rax, rbx\n",
+            "\tpop rbx\n",
+            "\tadd rax, rbx\n",
+            "\tmov rax, 60\n",
+            "\tmov rdi, 0\n",
+            "\tsyscall\n",
+        ];
+        assert_eq!(correct, c.asm);
         for asm in c.asm{
             let _ = c.file_handler.write_all(asm.as_bytes());
         }
-        assert_eq!(true, true);
     }
 }
 
