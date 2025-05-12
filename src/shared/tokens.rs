@@ -15,6 +15,8 @@ pub enum TokenType {
     Semicolon,
     Slash,
     Star,
+    At,
+    Pound,
 
     // One or two character tokens.
     Bang,
@@ -33,8 +35,6 @@ pub enum TokenType {
 
     // Keywords.
     And,
-    Function,
-    Struct,
     Else,
     False,
     Fun,
@@ -54,12 +54,10 @@ pub enum TokenType {
     Eof,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Token<T> {
+pub struct Token<T: Clone> {
     pub token_type: TokenType,
     pub position: Position,
     pub lexeme: (usize, usize),
-    pub meta_data: T
+    pub meta_data: T,
 }
-

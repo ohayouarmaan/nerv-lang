@@ -1,3 +1,5 @@
+use std::iter::Peekable;
+
 use crate::shared::{
     errors::LexerError, meta::{AnyMetadata, NumberMetaData, StringMetadata}, positions::Position, tokens::{
         Token,
@@ -9,7 +11,7 @@ use crate::shared::{
 #[derive(Debug, Clone, Copy)]
 pub struct Lexer<'a> {
     source_code: &'a str,
-    current_index: usize,
+    position: usize,
     current_line: usize,
     current_column: usize,
 }
@@ -20,14 +22,14 @@ impl<'a> Lexer<'a> {
     pub fn new(source_code: &'a str) -> Self {
         Self {
             source_code,
-            current_index: 0,
+            position: 0,
             current_line: 1,
             current_column: 0
         }
     }
 
     fn can_move(&self) -> bool {
-        if self.current_index < self.source_code.len() {
+        if self.position < self.source_code.len() {
             return true;
         }
         false
@@ -35,7 +37,7 @@ impl<'a> Lexer<'a> {
 
     fn advance(&mut self) -> Result<(), LexerError> {
         if self.can_move() {
-            self.current_index += 1;
+            self.position += 1;
             self.current_column += 1;
             return Ok(())
         }
@@ -44,7 +46,7 @@ impl<'a> Lexer<'a> {
 
     fn generate_operator(&mut self, lexeme_start: usize, tt: TokenType) -> Option<Token<AnyMetadata<'a>>> {
         self.advance().ok()?;
-        let lexeme_ending = self.current_index;
+        let lexeme_ending = self.position;
         Some(Token {
             token_type: tt,
             position: Position::new(self.current_line, self.current_column),
@@ -54,19 +56,63 @@ impl<'a> Lexer<'a> {
     }
 
     fn get_current_character(&self) -> Result<char, LexerError> {
-        self.source_code.chars().nth(self.current_index).ok_or(LexerError::IllegalCharacterAccess)
+        self.source_code.chars().nth(self.position).ok_or(LexerError::IllegalCharacterAccess)
     }
 
-    fn generate_string(&mut self, lexeme_start: usize) -> Option<Token<AnyMetadata<'a>>> {
-        self.advance().ok()?;
+    fn generate_string(&mut self, lexeme_start: usize) -> Result<Token<AnyMetadata<'a>>, LexerError> {
+        self.advance().map_err(|_| LexerError::UnexpectedEof)?;
         let starting_column = self.current_column;
-        while self.can_move() && self.get_current_character().ok()? != '"' {
-            self.advance().ok()?;
+        while self.can_move() && self.get_current_character().map_err(|_| LexerError::UnexpectedEof)? != '"' {
+            self.advance().map_err(|_| LexerError::UnexpectedEof)?;
         }
-        self.advance().ok()?;
-        let lexeme_end = self.current_index;
-        Some(Token {
+        self.advance().map_err(|_| LexerError::UnexpectedEof)?;
+        let lexeme_end = self.position;
+        Ok(Token {
             token_type: TokenType::String,
+            position: Position::new(self.current_line, starting_column),
+            lexeme: (lexeme_start, lexeme_end),
+            meta_data: AnyMetadata::String(StringMetadata {
+                value: &self.source_code[lexeme_start..lexeme_end]
+            })
+        })
+    }
+
+    fn get_keyword_type(&self, lexeme_start: usize, lexeme_end: usize) -> Result<TokenType, LexerError> {
+        match &self.source_code[lexeme_start..lexeme_end] {
+            "and" => Ok(TokenType::And),
+            "else" => Ok(TokenType::Else),
+            "false" => Ok(TokenType::False),
+            "fun" => Ok(TokenType::Fun),
+            "for" => Ok(TokenType::For),
+            "if" => Ok(TokenType::If),
+            "nil" => Ok(TokenType::Nil),
+            "or" => Ok(TokenType::Or),
+            "print" => Ok(TokenType::Print),
+            "return" => Ok(TokenType::Return),
+            "super" => Ok(TokenType::Super),
+            "this" => Ok(TokenType::This),
+            "true" => Ok(TokenType::True),
+            "var" => Ok(TokenType::Var),
+            "while" => Ok(TokenType::While),
+            _ => Err(LexerError::IllegalKeyword),
+        }
+    }
+
+    fn generate_keyword(&mut self, lexeme_start: usize) -> Result<Token<AnyMetadata<'a>>, LexerError> {
+        self.advance().map_err(|_| LexerError::UnexpectedEof)?;
+        let starting_column = self.current_column;
+        while self.can_move(){
+            let ch = self.get_current_character().map_err(|_| LexerError::UnexpectedEof)?;
+            if [' ', '\t', '\0'].contains(&ch) {
+                break
+            }
+            self.advance().map_err(|_| LexerError::UnexpectedEof)?;
+        }
+        self.advance().map_err(|_| LexerError::UnexpectedEof)?;
+        let lexeme_end = self.position;
+        
+        Ok(Token {
+            token_type: self.get_keyword_type(lexeme_start, lexeme_end)?,
             position: Position::new(self.current_line, starting_column),
             lexeme: (lexeme_start, lexeme_end),
             meta_data: AnyMetadata::String(StringMetadata {
@@ -86,7 +132,7 @@ impl<'a> Lexer<'a> {
                 }
             }
         }
-        let value = match self.source_code[lexeme_start..self.current_column].parse::<u64>() {
+        let value = match self.source_code[lexeme_start..self.position].parse::<u64>() {
             Ok(x) => x,
             Err(_) => {
                 return Err(LexerError::IllegalNumber);
@@ -95,7 +141,7 @@ impl<'a> Lexer<'a> {
         Ok(Token {
             token_type: TokenType::Number,
             position: Position::new(self.current_line, starting_column),
-            lexeme: (lexeme_start, self.current_index),
+            lexeme: (lexeme_start, self.position),
             meta_data: AnyMetadata::Number(NumberMetaData {
                 value
             })
@@ -107,9 +153,9 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = Token<AnyMetadata<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let lexeme_start = self.current_index;
+        let mut lexeme_start = self.position;
         while self.can_move() {
-            if let Some(ch) = self.source_code.chars().nth(self.current_index) {
+            if let Some(ch) = self.source_code.chars().nth(self.position) {
                 match ch {
                     '\n' => {
                         self.current_line += 1;
@@ -122,25 +168,26 @@ impl<'a> Iterator for Lexer<'a> {
                     '-' => return self.generate_operator(lexeme_start, TokenType::Minus),
                     '/' => return self.generate_operator(lexeme_start, TokenType::Slash),
                     '*' => return self.generate_operator(lexeme_start, TokenType::Star),
+                    '@' => return self.generate_operator(lexeme_start, TokenType::At),
+                    '#' => return self.generate_operator(lexeme_start, TokenType::Pound),
 
-                    'a' ..= 'z' | 'A' ..= 'Z' | '_' => {
-                        todo!("Create keyword here.");
-                    }
-                    '"' => return self.generate_string(lexeme_start),
+                    // Words
+                    'a' ..= 'z' | 'A' ..= 'Z' | '_' => return self.generate_keyword(lexeme_start).ok(),
+                    '"' => return self.generate_string(lexeme_start).ok(),
                     '0' ..= '9' => return self.generate_number(lexeme_start).ok(),
+
+                    // Eof
                     '\0' => {
                         self.current_column += 1;
-                        return Some(Token{
-                            token_type: TokenType::Eof,
-                            position: Position::new(
-                                self.current_line,
-                                self.current_column
-                            ),
-                            lexeme: (self.current_index, self.current_index),
-                            meta_data: AnyMetadata::None
-                        })
+                        return None;
                     },
-                    _ => {}
+                    x => {
+                        if [' ', '\t'].contains(&x) {
+                            self.advance().ok();
+                            lexeme_start = self.position;
+                            continue;
+                        }
+                    }
                 }
             }
         }
@@ -154,17 +201,16 @@ mod tests {
 
     #[test]
     fn lexing_operators() {
-        let test = "+\0";
+        let test = "5 + 4\0";
         let mut lex = Lexer::new(test);
         if let Some(token1) = lex.next() {
-            assert_eq!(token1.token_type, TokenType::Plus);
-            assert_eq!(token1.position.line, 1);
-            assert_eq!(token1.position.column, 1);
+            assert_eq!(token1.token_type, TokenType::Number);
         }
         if let Some(token2) = lex.next() {
-            assert_eq!(token2.token_type, TokenType::Eof);
-            assert_eq!(token2.position.line, 1);
-            assert_eq!(token2.position.column, 2);
+            assert_eq!(token2.token_type, TokenType::Plus);
+        }
+        if let Some(token3) = lex.next() {
+            assert_eq!(token3.token_type, TokenType::Number);
         }
     }
 

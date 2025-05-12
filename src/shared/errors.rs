@@ -3,5 +3,6 @@ pub enum LexerError {
     CalledNextAfterExhaustion,
     IllegalCharacterAccess,
     IllegalNumber,
-    UnexpectedEof
+    UnexpectedEof,
+    IllegalKeyword
 }
