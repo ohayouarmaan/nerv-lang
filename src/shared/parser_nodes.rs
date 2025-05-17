@@ -1,4 +1,4 @@
-use super::{meta::AnyMetadata, tokens::Token};
+use super::{meta::AnyMetadata, tokens::{ Token, TokenType }};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -23,7 +23,6 @@ pub struct UnaryExpression<'a> {
     pub value: Box<Expression<'a>>,
 }
 
-
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct LiteralExpression<'a> {
@@ -35,5 +34,27 @@ pub struct LiteralExpression<'a> {
 pub struct Program<'a> {
     //TODO: until we reach statements this will hold expressions, but after that it shall hold
     //statements
-    pub stmts: Vec<Expression<'a>>
+    pub stmts: Vec<Statement<'a>>
 }
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub enum Statement<'a> {
+    VarDeclaration(VarDeclarationStatement<'a>),
+    ExpressionStatement(ExpressionStatement<'a>)
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct VarDeclarationStatement<'a> {
+    pub name: &'a str,
+    pub value: Expression<'a>,
+    pub variable_type: TokenType
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct ExpressionStatement<'a> {
+    pub value: Expression<'a>,
+}
+

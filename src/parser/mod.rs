@@ -1,13 +1,9 @@
 use crate::{
     lexer::Lexer,
     shared::{
-        meta::AnyMetadata,
+        meta::{AnyMetadata, IdentiferMetaData},
         parser_nodes::{
-            BinaryExpression,
-            Expression,
-            LiteralExpression,
-            Program,
-            UnaryExpression
+            BinaryExpression, Expression, ExpressionStatement, LiteralExpression, Program, Statement, UnaryExpression, VarDeclarationStatement
         },
         tokens::{
             Token,
@@ -35,34 +31,93 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse(&mut self) -> Program<'a> {
-        let mut exprs: Vec<Expression> = vec![];
+        let mut stmts: Vec<Statement> = vec![];
         while self.lexer.peek().is_some() {
-            exprs.push(self.parse_expression());
+            stmts.push(self.parse_statement());
         }
 
         Program {
-            stmts: exprs
+            stmts
+        }
+    }
+
+    fn parse_statement(&mut self) -> Statement<'a> {
+        if let Some(current_token) = self.lexer.peek() {
+            match current_token.token_type {
+                TokenType::Dec => {
+                    // Variable Declaration Statement
+                    self.consume(TokenType::Dec);
+                    if let Some(t) = self.lexer.next() {
+                        if t.token_type != TokenType::Identifier {
+                            panic!("Expected a Identifier after 'dec' {:?}", self.previous_token);
+                        }
+                        if let AnyMetadata::Identifier(IdentiferMetaData { value }) = t.meta_data {
+                            let data_type: TokenType;
+                            if let Some(Token { token_type: TokenType::DInteger, .. }) = self.lexer.next() {
+                                data_type = TokenType::DInteger;
+                            } else if let Some(Token { token_type: TokenType::DFloat, .. }) = self.lexer.next() {
+                                data_type = TokenType::DFloat;
+                            } else {
+                                panic!("Invalid data type.");
+                            } 
+                            if let Some(Token { token_type: TokenType::Equal, .. }) = self.lexer.next() {
+                                let expr = self.parse_expression();
+                                self.consume(TokenType::Semicolon);
+                                return Statement::VarDeclaration(VarDeclarationStatement {
+                                    value: expr,
+                                    name: value,
+                                    variable_type: data_type
+                                });
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    let expr = self.parse_expression();
+                    dbg!(&expr);
+                    self.consume(TokenType::Semicolon);
+                    return Statement::ExpressionStatement(ExpressionStatement {
+                        value: expr
+                    });
+                }
+            }
+        }
+        panic!("UNREACHABLE");
+    }
+
+    fn consume(&mut self, tt: TokenType) {
+        if let Some(Token { token_type, .. }) = self.lexer.peek() {
+            if *token_type == tt {
+                self.previous_token = self.lexer.next();
+            } else {
+                panic!("Expected a {:?} found {:?}", tt, *token_type);
+            }
         }
     }
 
     fn parse_expression(&mut self) -> Expression<'a> {
-        self.equality()
+        let t = self.equality();
+        t
     }
 
     fn equality(&mut self) -> Expression<'a> {
-        self.create_binary_expr(vec![TokenType::BangEqual, TokenType::EqualEqual], Self::comparison)
+        let e = self.create_binary_expr(vec![TokenType::BangEqual, TokenType::EqualEqual], Self::comparison);
+        e
     }
 
     fn comparison(&mut self) -> Expression<'a> {
-        self.create_binary_expr(vec![TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual], Self::term)
+        let x = self.create_binary_expr(vec![TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual], Self::term);
+        x
     }
 
     fn term(&mut self) -> Expression<'a> {
-        self.create_binary_expr(vec![TokenType::Minus, TokenType::Plus], Self::factor)
+        let x = self.create_binary_expr(vec![TokenType::Minus, TokenType::Plus], Self::factor);
+        x
     }
 
     fn factor(&mut self) -> Expression<'a> {
-        self.create_binary_expr(vec![TokenType::Slash, TokenType::Star], Self::unary)
+        let t = self.create_binary_expr(vec![TokenType::Slash, TokenType::Star], Self::unary);
+        t
     }
     
     fn unary(&mut self) -> Expression<'a> {
@@ -80,10 +135,15 @@ impl<'a> Parser<'a> {
     fn primary(&mut self) -> Expression<'a> {
         if let Some(token) = self.lexer.peek() {
             self.previous_token = Some(token.clone());
-            let e = Expression::Literal(LiteralExpression {
-                value: self.lexer.next().expect("UNREACHABLE")
-            });
-            e
+            let tok = self.lexer.next().expect("UNREACHABLE");
+            if  ([TokenType::Integer, TokenType::String]).contains(&tok.token_type) {
+                let e = Expression::Literal(LiteralExpression {
+                    value: tok
+                });
+                e
+            } else {
+                panic!("INVALID");
+            }
         } else {
             panic!("UNREACHABLE");
         }
@@ -94,7 +154,6 @@ impl<'a> Parser<'a> {
         match_tokens: Vec<TokenType>,
         precedent_function: fn(&mut Self) -> Expression<'a>,
     ) -> Expression<'a> {
-
         let mut expr = precedent_function(self);
         while self.match_tokens(&match_tokens) {
             let operator = self.previous_token.clone().expect("Token must exist here");
@@ -123,22 +182,21 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shared::{meta::AnyMetadata, tokens::TokenType};
+    use crate::shared::{meta::{AnyMetadata, NumberMetaData, NumberType}, tokens::TokenType};
     
     #[test]
     fn check_parsing_expression() {
-        let source_code = "5 + 4 * 0\0";
+        let source_code = "5 + 4 * 0;\0";
         let mut parser = Parser::new(source_code);
         let program = parser.parse();
 
         assert_eq!(program.stmts.len(), 1);
-
         match &program.stmts[0] {
-            Expression::Binary(add_expr) => {
+            Statement::ExpressionStatement(ExpressionStatement { value: Expression::Binary(add_expr) }) => {
                 match *add_expr.left {
                     Expression::Literal(ref lit) => {
                         match lit.value.meta_data {
-                            AnyMetadata::Number(num) => assert_eq!(num.value, 5),
+                                    AnyMetadata::Number(NumberMetaData { value: NumberType::Integer(n) }) => assert_eq!(n, 5),
                             _ => panic!("Expected number metadata on left of '+'"),
                         }
                     },
@@ -152,7 +210,7 @@ mod tests {
                         match *mul_expr.left {
                             Expression::Literal(ref lit) => {
                                 match lit.value.meta_data {
-                                    AnyMetadata::Number(num) => assert_eq!(num.value, 4),
+                                    AnyMetadata::Number(NumberMetaData { value: NumberType::Integer(n) }) => assert_eq!(n, 4),
                                     _ => panic!("Expected number metadata on left of '*'"),
                                 }
                             },
@@ -164,7 +222,7 @@ mod tests {
                         match *mul_expr.right {
                             Expression::Literal(ref lit) => {
                                 match lit.value.meta_data {
-                                    AnyMetadata::Number(num) => assert_eq!(num.value, 0),
+                                    AnyMetadata::Number(NumberMetaData { value: NumberType::Integer(n) }) => assert_eq!(n, 0),
                                     _ => panic!("Expected number metadata on right of '*'"),
                                 }
                             },
@@ -177,4 +235,13 @@ mod tests {
             _ => panic!("Expected binary '+' expression at root"),
         }
     }
+
+    // #[test]
+    // fn check_variable() {
+    //     let source_code = "dec wow int = 5 * 3;";
+    //     let mut parser = Parser::new(source_code);
+    //     let program = parser.parse();
+    //     dbg!(program);
+    //     assert_eq!(true, true)
+    // }
 }

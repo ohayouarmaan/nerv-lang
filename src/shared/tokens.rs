@@ -1,7 +1,7 @@
 use crate::shared::positions::Position;
 
 #[allow(dead_code)]
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
     // Single-character tokens.
     LeftParen,
@@ -31,7 +31,9 @@ pub enum TokenType {
     // Literals.
     Identifier,
     String,
-    Number,
+    Integer,
+    Float,
+    Character,
 
     // Keywords.
     And,
@@ -48,7 +50,13 @@ pub enum TokenType {
     This,
     True,
     Var,
+    Dec,
     While,
+
+    // Datatypes
+    DInteger,
+    DFloat,
+    DChar,
 
     // End of file.
     Eof,
