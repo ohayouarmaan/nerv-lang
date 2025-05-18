@@ -1,7 +1,7 @@
 use crate::{
     lexer::Lexer,
     shared::{
-        meta::{AnyMetadata, IdentiferMetaData},
+        meta::AnyMetadata,
         parser_nodes::{
             BinaryExpression, Expression, ExpressionStatement, LiteralExpression, Program, Statement, UnaryExpression, VarDeclarationStatement
         },
@@ -51,7 +51,7 @@ impl<'a> Parser<'a> {
                         if t.token_type != TokenType::Identifier {
                             panic!("Expected a Identifier after 'dec' {:?}", self.previous_token);
                         }
-                        if let AnyMetadata::Identifier(IdentiferMetaData { value }) = t.meta_data {
+                        if let AnyMetadata::Identifier{ value } = t.meta_data {
                             let data_type: TokenType;
                             if let Some(Token { token_type: TokenType::DInteger, .. }) = self.lexer.next() {
                                 data_type = TokenType::DInteger;
@@ -182,7 +182,7 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shared::{meta::{AnyMetadata, NumberMetaData, NumberType}, tokens::TokenType};
+    use crate::shared::{meta::{AnyMetadata, NumberType}, tokens::TokenType};
     
     #[test]
     fn check_parsing_expression() {
@@ -196,7 +196,7 @@ mod tests {
                 match *add_expr.left {
                     Expression::Literal(ref lit) => {
                         match lit.value.meta_data {
-                                    AnyMetadata::Number(NumberMetaData { value: NumberType::Integer(n) }) => assert_eq!(n, 5),
+                                    AnyMetadata::Number { value: NumberType::Integer(n) } => assert_eq!(n, 5),
                             _ => panic!("Expected number metadata on left of '+'"),
                         }
                     },
@@ -210,7 +210,7 @@ mod tests {
                         match *mul_expr.left {
                             Expression::Literal(ref lit) => {
                                 match lit.value.meta_data {
-                                    AnyMetadata::Number(NumberMetaData { value: NumberType::Integer(n) }) => assert_eq!(n, 4),
+                                    AnyMetadata::Number { value: NumberType::Integer(n) } => assert_eq!(n, 4),
                                     _ => panic!("Expected number metadata on left of '*'"),
                                 }
                             },
@@ -222,7 +222,7 @@ mod tests {
                         match *mul_expr.right {
                             Expression::Literal(ref lit) => {
                                 match lit.value.meta_data {
-                                    AnyMetadata::Number(NumberMetaData { value: NumberType::Integer(n) }) => assert_eq!(n, 0),
+                                    AnyMetadata::Number { value: NumberType::Integer(n) } => assert_eq!(n, 0),
                                     _ => panic!("Expected number metadata on right of '*'"),
                                 }
                             },

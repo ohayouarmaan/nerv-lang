@@ -1,4 +1,4 @@
-#[allow(dead_code)]
+#[derive(Debug)]
 pub enum LexerError {
     CalledNextAfterExhaustion,
     IllegalCharacterAccess,
@@ -7,8 +7,10 @@ pub enum LexerError {
     IllegalKeyword
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum CompilerError {
     IllegalOutputFile,
     CanNotWrite,
 }
+

@@ -1,8 +1,8 @@
 use std::fs::File;
 use crate::shared::{
     errors::CompilerError,
-    meta::{ AnyMetadata, NumberMetaData, NumberType },
-    parser_nodes::{Expression, Program, Statement}, tokens::TokenType
+    meta::{ AnyMetadata, NumberType },
+    parser_nodes::{Expression, ExpressionStatement, Program, Statement}, tokens::TokenType
 };
 
 #[allow(dead_code)]
@@ -49,14 +49,18 @@ impl<'a> Compiler<'a> {
 
     pub fn compile_statement(&mut self, stmt: &Statement<'a>) -> Result<Vec<String>, CompilerError> {
         match stmt {
-            Statement::ExpressionStatement(_) => todo!(),
+            Statement::ExpressionStatement(e) => self.compile_expression_statement(e),
             Statement::VarDeclaration(_) => todo!(),
         }
     }
 
+    pub fn compile_expression_statement(&self, stmt: &ExpressionStatement) -> Result<Vec<String>, CompilerError> {
+        self.compile_expression(&stmt.value)
+    }
+
     #[allow(clippy::only_used_in_recursion)] // we will use &self more in future, for now to get
     // rid of weird linter issues we allow it.
-    pub fn compile_expression(&mut self, expr: &Expression<'a>) -> Result<Vec<String>, CompilerError> {
+    pub fn compile_expression(&self, expr: &Expression<'a>) -> Result<Vec<String>, CompilerError> {
         let mut asms_main = vec![];
         match expr {
             Expression::Binary(bin) => {
@@ -90,10 +94,10 @@ impl<'a> Compiler<'a> {
             }
 
             Expression::Literal(lit) => match &lit.value.meta_data {
-                AnyMetadata::Number(NumberMetaData { value: NumberType::Integer(val) }) => {
+                AnyMetadata::Number { value: NumberType::Integer(val) } => {
                     asms_main.push(format!("\tmov rax, {}\n", val));
                 }
-                AnyMetadata::Number(NumberMetaData { value: NumberType::Float(val) }) => {
+                AnyMetadata::Number { value: NumberType::Float(val) } => {
                     asms_main.push(format!("\tmov rax, {:.9}\n", val));
                 }
                 _ => unimplemented!("Only number literals supported for now"),
@@ -107,9 +111,9 @@ impl<'a> Compiler<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
-    use crate::parser::Parser;
-    use super::*;
+    // use std::io::Write;
+    // use crate::parser::Parser;
+    // use super::*;
 
     // #[test]
     // fn check_simple_arithmetic() {

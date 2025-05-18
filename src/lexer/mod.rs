@@ -1,7 +1,5 @@
-use std::iter::Peekable;
-
 use crate::shared::{
-    errors::LexerError, meta::{AnyMetadata, IdentiferMetaData, NumberMetaData, NumberType, StringMetadata}, positions::Position, tokens::{
+    errors::LexerError, meta::{AnyMetadata, NumberType}, positions::Position, tokens::{
         Token,
         TokenType
     }
@@ -71,9 +69,9 @@ impl<'a> Lexer<'a> {
             token_type: TokenType::String,
             position: Position::new(self.current_line, starting_column),
             lexeme: (lexeme_start, lexeme_end),
-            meta_data: AnyMetadata::String(StringMetadata {
+            meta_data: AnyMetadata::String {
                 value: &self.source_code[lexeme_start..lexeme_end]
-            })
+            }
         })
     }
 
@@ -130,9 +128,9 @@ impl<'a> Lexer<'a> {
                     token_type: TokenType::Identifier,
                     position: Position::new(self.current_line, starting_column),
                     lexeme: (lexeme_start, lexeme_end),
-                    meta_data: AnyMetadata::Identifier(IdentiferMetaData {
+                    meta_data: AnyMetadata::Identifier {
                         value: &self.source_code[lexeme_start..lexeme_end]
-                    })
+                    }
                 })
             }
             _ => {
@@ -170,9 +168,9 @@ impl<'a> Lexer<'a> {
                 token_type: TokenType::Integer,
                 position: Position::new(self.current_line, starting_column),
                 lexeme: (lexeme_start, self.position),
-                meta_data: AnyMetadata::Number(NumberMetaData {
+                meta_data: AnyMetadata::Number {
                     value: NumberType::Float(value),
-                })
+                }
             })
         } else {
             let value = match self.source_code[lexeme_start..self.position].parse::<i64>() {
@@ -185,9 +183,9 @@ impl<'a> Lexer<'a> {
                 token_type: TokenType::Integer,
                 position: Position::new(self.current_line, starting_column),
                 lexeme: (lexeme_start, self.position),
-                meta_data: AnyMetadata::Number(NumberMetaData {
+                meta_data: AnyMetadata::Number {
                     value: NumberType::Integer(value),
-                })
+                }
             })
         }
     }
@@ -251,7 +249,7 @@ impl<'a> Iterator for Lexer<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // use super::*;
 
     // #[test]
     // fn lexing_operators() {
