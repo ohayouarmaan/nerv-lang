@@ -35,6 +35,9 @@ pub enum TokenType {
     Float,
     Character,
 
+    // Ffi Stuffs
+    Extern,
+
     // Keywords.
     And,
     Else,

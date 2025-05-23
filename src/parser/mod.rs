@@ -53,14 +53,17 @@ impl<'a> Parser<'a> {
                         }
                         if let AnyMetadata::Identifier{ value } = t.meta_data {
                             let data_type: TokenType;
-                            if let Some(Token { token_type: TokenType::DInteger, .. }) = self.lexer.next() {
+                            let c_token = self.lexer.next();
+                            if let Some(Token { token_type: TokenType::DInteger, .. }) = c_token{
                                 data_type = TokenType::DInteger;
-                            } else if let Some(Token { token_type: TokenType::DFloat, .. }) = self.lexer.next() {
+                            } else if let Some(Token { token_type: TokenType::DFloat, .. }) = c_token{
                                 data_type = TokenType::DFloat;
                             } else {
                                 panic!("Invalid data type.");
                             } 
-                            if let Some(Token { token_type: TokenType::Equal, .. }) = self.lexer.next() {
+                            let after_data_type = self.lexer.next();
+                            println!("WE'RE HERE: {:?}", data_type);
+                            if let Some(Token { token_type: TokenType::Equal, .. }) = after_data_type {
                                 let expr = self.parse_expression();
                                 self.consume(TokenType::Semicolon);
                                 return Statement::VarDeclaration(VarDeclarationStatement {
@@ -68,6 +71,8 @@ impl<'a> Parser<'a> {
                                     name: value,
                                     variable_type: data_type
                                 });
+                            } else {
+                                println!("UNEXPECTED: {:?}", after_data_type);
                             }
                         }
                     }
@@ -236,12 +241,12 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn check_variable() {
-    //     let source_code = "dec wow int = 5 * 3;";
-    //     let mut parser = Parser::new(source_code);
-    //     let program = parser.parse();
-    //     dbg!(program);
-    //     assert_eq!(true, true)
-    // }
+    #[test]
+    fn check_variable() {
+        let source_code = "dec wow int = 5 * 3;";
+        let mut parser = Parser::new(source_code);
+        let program = parser.parse();
+        dbg!(program);
+        assert_eq!(true, true)
+    }
 }

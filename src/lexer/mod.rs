@@ -96,6 +96,7 @@ impl<'a> Lexer<'a> {
             "int" => Ok(TokenType::DInteger),
             "char" => Ok(TokenType::DChar),
             "float" => Ok(TokenType::DFloat),
+            "extern" => Ok(TokenType::Extern),
             _ => Err(LexerError::IllegalKeyword),
         }
     }
@@ -233,11 +234,23 @@ impl<'a> Iterator for Lexer<'a> {
                         })
                     }
 
+                    '=' => {
+                        self.advance().ok()?;
+                        return Some(Token {
+                            token_type: TokenType::Equal,
+                            position: Position::new(self.current_line, self.current_column),
+                            lexeme: (lexeme_start, self.position),
+                            meta_data: AnyMetadata::None
+                        })
+                    }
+
                     x => {
                         if [' ', '\t'].contains(&x) {
                             self.advance().ok();
                             lexeme_start = self.position;
                             continue;
+                        } else {
+                            panic!("ILLEGAL CHARACTER: {:?}:{:?}", self.current_line, self.current_column);
                         }
                     }
                 }
