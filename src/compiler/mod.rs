@@ -1,15 +1,16 @@
-use std::fs::File;
+use core::panic;
+use std::{collections::HashMap, fs::File};
 use crate::shared::{
-    errors::CompilerError,
-    meta::{ AnyMetadata, NumberType },
-    parser_nodes::{Expression, ExpressionStatement, Program, Statement}, tokens::TokenType
+    compiler_defaults::SIZES, errors::CompilerError, meta::{ AnyMetadata, NumberType }, parser_nodes::{Expression, ExpressionStatement, Program, Statement, VarDeclarationStatement}, tokens::TokenType
 };
 
 #[allow(dead_code)]
 pub struct Compiler<'a> {
     pub prog: Program<'a>,
     pub file_handler: File,
-    pub asm: Vec<String>
+    pub asm: Vec<String>,
+    pub symbol_table: HashMap<&'a str, isize>,
+    pub current_stack_offset: isize
 }
 
 #[allow(dead_code)]
@@ -23,7 +24,9 @@ impl<'a> Compiler<'a> {
         Ok(Self {
             prog: ast,
             file_handler: file,
-            asm
+            asm,
+            symbol_table: HashMap::new(),
+            current_stack_offset: 0
         })
     }
 
@@ -50,8 +53,29 @@ impl<'a> Compiler<'a> {
     pub fn compile_statement(&mut self, stmt: &Statement<'a>) -> Result<Vec<String>, CompilerError> {
         match stmt {
             Statement::ExpressionStatement(e) => self.compile_expression_statement(e),
-            Statement::VarDeclaration(_) => todo!(),
+            Statement::VarDeclaration(var) => self.compile_variable_declaration_statement(var),
         }
+    }
+
+    pub fn compile_variable_declaration_statement(&mut self, stmt: &VarDeclarationStatement<'a>) -> Result<Vec<String>, CompilerError> {
+        let mut asms_main = vec![];
+        asms_main.extend(self.compile_expression(&stmt.value)?);
+        match stmt.variable_type {
+            TokenType::DInteger => {
+                self.current_stack_offset -= SIZES.d_int as isize;
+                self.symbol_table.insert(stmt.name, self.current_stack_offset);
+                asms_main.push(format!("\tmov DWORD [rbp{}], eax", self.current_stack_offset));
+            },
+            TokenType::DFloat => {
+                self.current_stack_offset -= SIZES.d_float as isize;
+                self.symbol_table.insert(stmt.name, self.current_stack_offset);
+                asms_main.push(format!("\tmovq QWORD [rbp{}], rax", self.current_stack_offset));
+            },
+            _ => {
+                return Err(CompilerError::UnknownDataType);
+            }
+        }
+        Ok(asms_main)
     }
 
     pub fn compile_expression_statement(&self, stmt: &ExpressionStatement) -> Result<Vec<String>, CompilerError> {

@@ -12,5 +12,7 @@ pub enum LexerError {
 pub enum CompilerError {
     IllegalOutputFile,
     CanNotWrite,
+    UnknownDataType,
+    UnsupportedOperator
 }
 

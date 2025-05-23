@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn check_variable() {
-        let source_code = "dec wow int = 5 * 3;";
+        let source_code = "dec fifteen int = 5 * 3;";
         let mut parser = Parser::new(source_code);
         let program = parser.parse();
         dbg!(program);
