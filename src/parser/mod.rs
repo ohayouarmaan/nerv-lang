@@ -141,7 +141,7 @@ impl<'a> Parser<'a> {
         if let Some(token) = self.lexer.peek() {
             self.previous_token = Some(token.clone());
             let tok = self.lexer.next().expect("UNREACHABLE");
-            if  ([TokenType::Integer, TokenType::String]).contains(&tok.token_type) {
+            if  ([TokenType::Integer, TokenType::String, TokenType::Identifier]).contains(&tok.token_type) {
                 let e = Expression::Literal(LiteralExpression {
                     value: tok
                 });
@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn check_variable() {
-        let source_code = "dec fifteen int = 5 * 3;";
+        let source_code = "dec fifteen int = 5 * 3;\n 5 + fifteen;\0";
         let mut parser = Parser::new(source_code);
         let program = parser.parse();
         dbg!(program);

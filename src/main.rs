@@ -7,9 +7,9 @@ mod typechecker;
 mod shared;
 
 fn main() {
-    let mut p = Parser::new("dec fifteen int = 5 * 3;\0");
+    let mut p = Parser::new("dec fifteen int = 5 * 3;\n 5 + fifteen;\0");
     let prog = p.parse();
-    let mut c = match compiler::Compiler::new(prog, "test.s") {
+    let mut c = match compiler::Compiler::new(prog, "out.s") {
         Ok(t) => t,
         Err(e) => panic!("{:?}", e)
     };

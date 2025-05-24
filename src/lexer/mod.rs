@@ -106,14 +106,12 @@ impl<'a> Lexer<'a> {
         let starting_column = self.current_column;
         while self.can_move(){
             let ch = self.get_current_character().map_err(|_| LexerError::UnexpectedEof)?;
-            if [' ', '\t', '\0'].contains(&ch) {
-                self.position -= 1;
-                self.current_column -= 1;
+            if !ch.is_ascii_alphabetic() {
+                println!("CH: {:?}, {:?}", ch, self.position);
                 break
             }
             self.advance().map_err(|_| LexerError::UnexpectedEof)?;
         }
-        self.advance().map_err(|_| LexerError::UnexpectedEof)?;
         let lexeme_end = self.position;
         match self.get_keyword_type(lexeme_start, lexeme_end) {
             Ok(tt) => {
