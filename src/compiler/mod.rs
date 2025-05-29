@@ -15,27 +15,35 @@ pub struct Compiler<'a> {
     pub file_handler: File,
     pub asm: Vec<String>,
     pub symbol_table: HashMap<&'a str, Symbol>,
-    pub current_stack_offset: isize
+    pub current_stack_offset: isize,
+    pub data_section: Vec<String>,
+    pub data_counter: usize
 }
 
 #[allow(dead_code)]
 impl<'a> Compiler<'a> {
     pub fn new(ast: Program<'a>, out_file: &'a str) -> Result<Self, CompilerError> {
+        dbg!(&ast);
         let file = match File::create(out_file) {
             Ok(handler) => handler,
             Err(_) => return Err(CompilerError::IllegalOutputFile)
         };
         let asm = vec!["global main\n".to_string()];
+        let data_section = vec!["section .data\n".to_string()];
         Ok(Self {
             prog: ast,
             file_handler: file,
             asm,
+            data_section,
             symbol_table: HashMap::new(),
-            current_stack_offset: 0
+            current_stack_offset: 0,
+            data_counter: 0
         })
     }
 
     pub fn compile(&mut self) -> Result<(), CompilerError> {
+        let data_index = self.asm.len();
+        self.asm.push("section .text\n".to_string());
         self.asm.push("main:\n".to_string());
         self.asm.push("\tpush rbp\n".to_string());
         self.asm.push("\tmov rbp, rsp\n".to_string());
@@ -51,6 +59,11 @@ impl<'a> Compiler<'a> {
                 }
             }
         }
+
+        for i in 0..self.data_section.len() {
+            self.asm.insert(data_index + i, self.data_section[i].clone());
+        }
+
         self.asm.push("\tmov rax, 60\n".to_string());
         self.asm.push("\tmov rdi, 0\n".to_string());
         self.asm.push("\tsyscall\n".to_string());
@@ -75,7 +88,7 @@ impl<'a> Compiler<'a> {
                     offset: self.current_stack_offset,
                     size: SIZES.d_int
                 });
-                asms_main.push(format!("\tmov DWORD [rbp{}], eax\n", self.current_stack_offset));
+                asms_main.push("\tmov DWORD [rsp], eax\n".to_string());
             },
             TokenType::DFloat => {
                 self.asm.push("\tsub rsp, 4\n".to_string());
@@ -84,7 +97,16 @@ impl<'a> Compiler<'a> {
                     offset: self.current_stack_offset,
                     size: SIZES.d_int
                 });
-                asms_main.push(format!("\tmovq QWORD [rbp{}], rax\n", self.current_stack_offset));
+                asms_main.push("\tmovq QWORD [rsp], rax\n".to_string());
+            },
+            TokenType::DString => {
+                self.asm.push("\tsub rsp, 8\n".to_string());
+                self.current_stack_offset -= SIZES.d_ptr as isize;
+                self.symbol_table.insert(stmt.name, Symbol {
+                    offset: self.current_stack_offset,
+                    size: SIZES.d_ptr
+                });
+                asms_main.push("\tmov QWORD [rsp], rax\n".to_string());
             },
             _ => {
                 return Err(CompilerError::UnknownDataType);
@@ -169,6 +191,11 @@ impl<'a> Compiler<'a> {
                             panic!("Unknown variable {:?}", *value);
                         }
                     }
+                }
+                AnyMetadata::String { value } => {
+                    self.data_section.push(format!("var_{} db {}, 0\n", self.data_counter, (*value)).to_string());
+                    self.data_section.push(format!("var_len_{} equ {}\n", self.data_counter, (*value).len()).to_string());
+                    asms_main.push(format!("\tlea rax, [rel var_{}]\n", self.data_counter).to_string());
                 }
                 _ => unimplemented!("Only number literals supported for now"),
             },

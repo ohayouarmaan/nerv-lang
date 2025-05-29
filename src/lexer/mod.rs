@@ -94,6 +94,7 @@ impl<'a> Lexer<'a> {
             "dec" => Ok(TokenType::Dec),
             "while" => Ok(TokenType::While),
             "int" => Ok(TokenType::DInteger),
+            "string" => Ok(TokenType::DString),
             "char" => Ok(TokenType::DChar),
             "float" => Ok(TokenType::DFloat),
             "extern" => Ok(TokenType::Extern),

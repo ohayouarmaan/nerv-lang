@@ -7,7 +7,7 @@ mod typechecker;
 mod shared;
 
 fn main() {
-    let mut p = Parser::new("dec fifteen int = 5 * 3;\n 8 + fifteen;\0");
+    let mut p = Parser::new("dec fifteen string = \"Hello, World!\";");
     let prog = p.parse();
     let mut c = match compiler::Compiler::new(prog, "out.s") {
         Ok(t) => t,

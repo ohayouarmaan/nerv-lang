@@ -60,6 +60,7 @@ pub enum TokenType {
     DInteger,
     DFloat,
     DChar,
+    DString,
 
     // End of file.
     Eof,

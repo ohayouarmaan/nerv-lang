@@ -54,18 +54,17 @@ impl<'a> Parser<'a> {
                         if let AnyMetadata::Identifier{ value } = t.meta_data {
                             let data_type: TokenType;
                             let c_token = self.lexer.next();
-                            if let Some(Token { token_type: TokenType::DInteger, .. }) = c_token{
-                                data_type = TokenType::DInteger;
-                            } else if let Some(Token { token_type: TokenType::DFloat, .. }) = c_token{
-                                data_type = TokenType::DFloat;
+                            if let Some(Token { token_type, .. }) = c_token{
+                                data_type = token_type;
                             } else {
-                                panic!("Invalid data type.");
+                                panic!("Invalid data type. {:?}", c_token);
                             } 
                             let after_data_type = self.lexer.next();
                             println!("WE'RE HERE: {:?}", data_type);
                             if let Some(Token { token_type: TokenType::Equal, .. }) = after_data_type {
                                 let expr = self.parse_expression();
                                 self.consume(TokenType::Semicolon);
+                                dbg!(&expr, &value, &data_type);
                                 return Statement::VarDeclaration(VarDeclarationStatement {
                                     value: expr,
                                     name: value,
@@ -141,7 +140,7 @@ impl<'a> Parser<'a> {
         if let Some(token) = self.lexer.peek() {
             self.previous_token = Some(token.clone());
             let tok = self.lexer.next().expect("UNREACHABLE");
-            if  ([TokenType::Integer, TokenType::String, TokenType::Identifier]).contains(&tok.token_type) {
+            if  ([TokenType::Integer, TokenType::String, TokenType::Identifier, TokenType::String]).contains(&tok.token_type) {
                 let e = Expression::Literal(LiteralExpression {
                     value: tok
                 });
