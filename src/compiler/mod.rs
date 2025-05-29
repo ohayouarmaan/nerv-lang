@@ -69,6 +69,7 @@ impl<'a> Compiler<'a> {
         asms_main.extend(self.compile_expression(&stmt.value)?);
         match stmt.variable_type {
             TokenType::DInteger => {
+                self.asm.push("\tsub rsp, 4\n".to_string());
                 self.current_stack_offset -= SIZES.d_int as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
                     offset: self.current_stack_offset,
@@ -77,6 +78,7 @@ impl<'a> Compiler<'a> {
                 asms_main.push(format!("\tmov DWORD [rbp{}], eax\n", self.current_stack_offset));
             },
             TokenType::DFloat => {
+                self.asm.push("\tsub rsp, 4\n".to_string());
                 self.current_stack_offset -= SIZES.d_float as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
                     offset: self.current_stack_offset,
