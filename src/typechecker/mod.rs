@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
 use crate::shared::{
-    parser_nodes::{
+    meta::AnyMetadata, parser_nodes::{
         BlockStatement, Expression, ExpressionStatement, FunctionDeclaration, Program, ReturnStatement, Statement, VarDeclarationStatement
-    },
-    tokens::TokenType,
+    }, tokens::TokenType
 };
 
 pub struct TypeChecker<'a> {
@@ -77,8 +76,8 @@ impl<'a> TypeChecker<'a> {
 
         if Some(expr_type) != expected_return_type {
             panic!(
-                "Return type mismatch: expected {:?}, got {:?}",
-                expected_return_type, expr_type
+                "Return type mismatch: expected {:?}, got {:?} {}:{}",
+                expected_return_type, expr_type, r.position.line, r.position.column
             );
         }
     }
@@ -112,7 +111,7 @@ impl<'a> TypeChecker<'a> {
         }
 
         self.type_check_block_statement(fx.body);
-        self.env.return_type = None;
+        self.env.return_type= None;
     }
 
     fn eval_expression(&self, expr: &Expression<'a>) -> TokenType {
@@ -146,6 +145,17 @@ impl<'a> TypeChecker<'a> {
                     TokenType::String => TokenType::DString,
                     TokenType::Float => TokenType::DFloat,
                     TokenType::Void => TokenType::DVoid,
+                    TokenType::Identifier => {
+                        if let AnyMetadata::Identifier { value } = literal_expression.value.meta_data {
+                            if let Some(variable_type) = self.env.vars.get(value) {
+                                *variable_type
+                            } else {
+                                panic!("Unknown Variable {}:{}", literal_expression.value.position.line, literal_expression.value.position.column);
+                            }
+                        } else {
+                            panic!("Unknown Variable {}:{}", literal_expression.value.position.line, literal_expression.value.position.column);
+                        }
+                    }
                     _ => {
                         panic!("Unknown Literal Expression: {:?} {}:{}", literal_expression.value, literal_expression.value.position.line, literal_expression.value.position.column);
                     }

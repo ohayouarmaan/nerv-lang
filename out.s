@@ -2,24 +2,6 @@ section .data
 section .text
 	global main
 	global functionA
-functionA:
-	push rbp
-	mov rbp, rsp
-
-	; VARIABLE DECLARATION
-	mov rax, 2
-	sub rsp, 4
-	mov DWORD [rsp], eax
-
-	mov rax, 2
-	sub rsp, 8
-	push rax
-	mov rax, 2
-	pop rbx
-	add rsp, 8
-	add rax, rbx
-	leave
-	ret
 main:
 	push rbp
 	mov rbp, rsp
@@ -30,5 +12,17 @@ main:
 	mov DWORD [rsp], eax
 
 	mov rax, 5
+	leave
+	ret
+functionA:
+	push rbp
+	mov rbp, rsp
+
+	; VARIABLE DECLARATION
+	mov rax, 2
+	sub rsp, 4
+	mov DWORD [rsp], eax
+
+	mov eax, DWORD [rbp-4]
 	leave
 	ret
