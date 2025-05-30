@@ -41,7 +41,26 @@ pub struct Program<'a> {
 #[derive(Debug, Clone)]
 pub enum Statement<'a> {
     VarDeclaration(VarDeclarationStatement<'a>),
-    ExpressionStatement(ExpressionStatement<'a>)
+    ExpressionStatement(ExpressionStatement<'a>),
+    FunctionDeclaration(FunctionDeclaration<'a>),
+    BlockStatement(BlockStatement<'a>),
+    ReturnStatement(ReturnStatement<'a>)
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct Argument<'a> {
+    pub name: &'a str,
+    pub arg_type: TokenType
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct FunctionDeclaration<'a> {
+    pub name: &'a str,
+    pub arity: usize,
+    pub arguments: Vec<Argument<'a>>,
+    pub body: BlockStatement<'a>
 }
 
 #[allow(dead_code)]
@@ -56,5 +75,17 @@ pub struct VarDeclarationStatement<'a> {
 #[derive(Debug, Clone)]
 pub struct ExpressionStatement<'a> {
     pub value: Expression<'a>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct BlockStatement<'a> {
+    pub values: Vec<Statement<'a>>
+}
+
+
+#[derive(Debug, Clone)]
+pub struct ReturnStatement<'a> {
+    pub value: Expression<'a>
 }
 

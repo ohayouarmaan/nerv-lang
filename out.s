@@ -1,23 +1,34 @@
-global main
-extern print_string
-
 section .data
-var_0 db "Hello, World!", 0
-var_len_0 equ 15
-
 section .text
+	global main
+	global functionA
+functionA:
+	push rbp
+	mov rbp, rsp
+
+	; VARIABLE DECLARATION
+	mov rax, 2
+	sub rsp, 4
+	mov DWORD [rsp], eax
+
+	mov rax, 2
+	sub rsp, 8
+	push rax
+	mov rax, 2
+	pop rbx
+	add rsp, 8
+	add rax, rbx
+	leave
+	ret
 main:
 	push rbp
 	mov rbp, rsp
 
-	sub rsp, 8
-	lea rax, [rel var_0]
-	mov QWORD [rsp], rax
+	; VARIABLE DECLARATION
+	mov rax, 3
+	sub rsp, 4
+	mov DWORD [rsp], eax
 
-  mov rdi, [rbp - 8]
-  call print_string
-
-  mov eax, 0
-  leave
-  ret
-  
+  call functionA
+	leave
+	ret

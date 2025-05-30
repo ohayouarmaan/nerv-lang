@@ -243,6 +243,46 @@ impl<'a> Iterator for Lexer<'a> {
                         })
                     }
 
+                    '(' => {
+                        self.advance().ok()?;
+                        return Some(Token {
+                            token_type: TokenType::LeftParen,
+                            position: Position::new(self.current_line, self.current_column),
+                            lexeme: (lexeme_start, self.position),
+                            meta_data: AnyMetadata::None
+                        })
+                    }
+
+                    ')' => {
+                        self.advance().ok()?;
+                        return Some(Token {
+                            token_type: TokenType::RightParen,
+                            position: Position::new(self.current_line, self.current_column),
+                            lexeme: (lexeme_start, self.position),
+                            meta_data: AnyMetadata::None
+                        })
+                    }
+
+                    '{' => {
+                        self.advance().ok()?;
+                        return Some(Token {
+                            token_type: TokenType::LeftBrace,
+                            position: Position::new(self.current_line, self.current_column),
+                            lexeme: (lexeme_start, self.position),
+                            meta_data: AnyMetadata::None
+                        })
+                    }
+
+                    '}' => {
+                        self.advance().ok()?;
+                        return Some(Token {
+                            token_type: TokenType::RightBrace,
+                            position: Position::new(self.current_line, self.current_column),
+                            lexeme: (lexeme_start, self.position),
+                            meta_data: AnyMetadata::None
+                        })
+                    }
+
                     x => {
                         if [' ', '\t'].contains(&x) {
                             self.advance().ok();

@@ -1,0 +1,9 @@
+@main(int x) {
+  dec x int = 3;
+  return 5;
+}
+
+@functionA(int y) {
+  dec y int = 2;
+  return 2 + 2;
+}

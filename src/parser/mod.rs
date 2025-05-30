@@ -3,7 +3,7 @@ use crate::{
     shared::{
         meta::AnyMetadata,
         parser_nodes::{
-            BinaryExpression, Expression, ExpressionStatement, LiteralExpression, Program, Statement, UnaryExpression, VarDeclarationStatement
+            Argument, BinaryExpression, BlockStatement, Expression, ExpressionStatement, FunctionDeclaration, LiteralExpression, Program, ReturnStatement, Statement, UnaryExpression, VarDeclarationStatement
         },
         tokens::{
             Token,
@@ -76,6 +76,18 @@ impl<'a> Parser<'a> {
                         }
                     }
                 }
+                TokenType::At => {
+                    self.consume(TokenType::At);
+                    return self.parse_function()
+                }
+                TokenType::Return => {
+                    self.consume(TokenType::Return);
+                    let value = self.parse_expression();
+                    self.consume(TokenType::Semicolon);
+                    return Statement::ReturnStatement(ReturnStatement {
+                        value
+                    });
+                }
                 _ => {
                     let expr = self.parse_expression();
                     dbg!(&expr);
@@ -90,12 +102,83 @@ impl<'a> Parser<'a> {
     }
 
     fn consume(&mut self, tt: TokenType) {
-        if let Some(Token { token_type, .. }) = self.lexer.peek() {
+        if let Some(Token { token_type, position, .. }) = self.lexer.peek() {
             if *token_type == tt {
                 self.previous_token = self.lexer.next();
             } else {
-                panic!("Expected a {:?} found {:?}", tt, *token_type);
+                panic!("Expected a {:?} found {:?} {:?}:{:?}", tt, *token_type, position.line, position.column);
             }
+        }
+    }
+
+    fn parse_function(&mut self) -> Statement<'a> {
+        let name = if self.match_tokens(&[TokenType::Identifier]) {
+            if let Some(prev) = &self.previous_token {
+                if let AnyMetadata::Identifier{ value } = &prev.meta_data {
+                    *value
+                } else {
+                    panic!("Expected identifier metadata");
+                }
+            } else {
+                panic!("No previous token");
+            }
+        } else {
+            panic!("Expected function name identifier");
+        };
+
+        self.consume(TokenType::LeftParen);
+        let mut args = Vec::new();
+
+        while !self.match_tokens(&[TokenType::RightParen]) {
+            args.push(self.parse_args());
+        }
+
+        let body = self.parse_block_statement();
+
+        if let Statement::BlockStatement(body) = body {
+            Statement::FunctionDeclaration(FunctionDeclaration {
+                name,
+                arity: args.len(),
+                arguments: args,
+                body
+            })
+        } else {
+            panic!("UNREACHABLE");
+        }
+
+    }
+
+    fn parse_block_statement(&mut self) -> Statement<'a> {
+        self.consume(TokenType::LeftBrace);
+        let mut stmts = vec![];
+        while !self.match_tokens(&[TokenType::RightBrace]) {
+            stmts.push(self.parse_statement());
+        }
+
+        Statement::BlockStatement(BlockStatement { values: stmts })
+    }
+
+    fn parse_args(&mut self) -> Argument<'a> {
+        let matched = self.match_tokens(&[TokenType::DInteger, TokenType::DString]);
+
+        if matched {
+            let arg_type = self.previous_token.clone().expect("UNREACHABLE");
+
+            if self.match_tokens(&[TokenType::Identifier]) {
+                let prev = self.previous_token.clone().expect("UNREACHABLE");
+                if let AnyMetadata::Identifier { value: name } = &prev.meta_data {
+                    Argument {
+                        name,
+                        arg_type: arg_type.token_type,
+                    }
+                } else {
+                    panic!("Expected identifier metadata");
+                }
+            } else {
+                panic!();
+            }
+        } else {
+            panic!();
         }
     }
 

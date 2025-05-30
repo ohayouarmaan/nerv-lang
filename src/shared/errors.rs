@@ -13,6 +13,7 @@ pub enum CompilerError {
     IllegalOutputFile,
     CanNotWrite,
     UnknownDataType,
-    UnsupportedOperator
+    UnsupportedOperator,
+    UnexpectedStandaloneBlock
 }
 

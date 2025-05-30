@@ -1,8 +1,8 @@
 use core::panic;
 use std::{collections::HashMap, fs::File};
-use crate::shared::{
-    compiler_defaults::SIZES, errors::CompilerError, meta::{ AnyMetadata, NumberType }, parser_nodes::{Expression, ExpressionStatement, Program, Statement, VarDeclarationStatement}, tokens::TokenType
-};
+use crate::{main, shared::{
+    compiler_defaults::SIZES, errors::CompilerError, meta::{ AnyMetadata, NumberType }, parser_nodes::{Expression, ExpressionStatement, FunctionDeclaration, Program, ReturnStatement, Statement, VarDeclarationStatement}, tokens::TokenType
+}};
 
 pub struct Symbol {
     pub offset: isize,
@@ -17,7 +17,9 @@ pub struct Compiler<'a> {
     pub symbol_table: HashMap<&'a str, Symbol>,
     pub current_stack_offset: isize,
     pub data_section: Vec<String>,
-    pub data_counter: usize
+    pub text_section: Vec<String>,
+    pub data_counter: usize,
+    pub label_table: HashMap<String, Vec<String>>,
 }
 
 #[allow(dead_code)]
@@ -28,45 +30,45 @@ impl<'a> Compiler<'a> {
             Ok(handler) => handler,
             Err(_) => return Err(CompilerError::IllegalOutputFile)
         };
-        let asm = vec!["global main\n".to_string()];
+        let asm = vec![];
         let data_section = vec!["section .data\n".to_string()];
+        let text_section = vec!["section .text\n".to_string()];
         Ok(Self {
             prog: ast,
             file_handler: file,
             asm,
             data_section,
+            text_section,
             symbol_table: HashMap::new(),
             current_stack_offset: 0,
-            data_counter: 0
+            data_counter: 0,
+            label_table: HashMap::new()
         })
     }
 
     pub fn compile(&mut self) -> Result<(), CompilerError> {
-        let data_index = self.asm.len();
-        self.asm.push("section .text\n".to_string());
-        self.asm.push("main:\n".to_string());
-        self.asm.push("\tpush rbp\n".to_string());
-        self.asm.push("\tmov rbp, rsp\n".to_string());
-        for statement in self.prog.stmts.clone() {
-            match self.compile_statement(&statement) {
-                Err(_) => {
-
-                }
-                Ok(asm) => {
-                    for a in asm {
-                        self.asm.push(a);
-                    }
+        let progs = self.prog.stmts.clone();
+        for statement in progs {
+            if let Statement::FunctionDeclaration(fx) = &statement {
+                let compiled_fx = self.compile_function_declaration_statement(fx);
+                if let Ok((function_name, body)) = compiled_fx {
+                    self.text_section.push(format!("\tglobal {}\n", function_name).to_string());
+                    self.label_table.insert(function_name, body);
+                } else {
+                    println!("Err: {:?}", compiled_fx);
                 }
             }
         }
+        self.asm.extend_from_slice(&self.data_section);
+        self.asm.extend_from_slice(&self.text_section);
 
-        for i in 0..self.data_section.len() {
-            self.asm.insert(data_index + i, self.data_section[i].clone());
+        for t in self.label_table.iter() {
+            self.asm.push(format!("{}:\n", t.0));
+            for stmt in t.1 {
+                self.asm.push(stmt.to_string());
+            }
         }
 
-        self.asm.push("\tmov rax, 60\n".to_string());
-        self.asm.push("\tmov rdi, 0\n".to_string());
-        self.asm.push("\tsyscall\n".to_string());
         Ok(())
     }
 
@@ -74,15 +76,19 @@ impl<'a> Compiler<'a> {
         match stmt {
             Statement::ExpressionStatement(e) => self.compile_expression_statement(e),
             Statement::VarDeclaration(var) => self.compile_variable_declaration_statement(var),
+            Statement::ReturnStatement(ret) => self.compile_return_statement(ret),
+            _ => {
+                Err(CompilerError::UnexpectedStandaloneBlock)
+            }
         }
     }
 
     pub fn compile_variable_declaration_statement(&mut self, stmt: &VarDeclarationStatement<'a>) -> Result<Vec<String>, CompilerError> {
-        let mut asms_main = vec![];
-        asms_main.extend(self.compile_expression(&stmt.value)?);
+        let mut asms_main = vec!["\n\t; VARIABLE DECLARATION\n".to_string()];
+        asms_main.extend(self.compile_expression(&stmt.value, "rax")?);
         match stmt.variable_type {
             TokenType::DInteger => {
-                self.asm.push("\tsub rsp, 4\n".to_string());
+                asms_main.push("\tsub rsp, 4\n".to_string());
                 self.current_stack_offset -= SIZES.d_int as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
                     offset: self.current_stack_offset,
@@ -91,7 +97,7 @@ impl<'a> Compiler<'a> {
                 asms_main.push("\tmov DWORD [rsp], eax\n".to_string());
             },
             TokenType::DFloat => {
-                self.asm.push("\tsub rsp, 4\n".to_string());
+                asms_main.push("\tsub rsp, 4\n".to_string());
                 self.current_stack_offset -= SIZES.d_float as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
                     offset: self.current_stack_offset,
@@ -100,7 +106,7 @@ impl<'a> Compiler<'a> {
                 asms_main.push("\tmovq QWORD [rsp], rax\n".to_string());
             },
             TokenType::DString => {
-                self.asm.push("\tsub rsp, 8\n".to_string());
+                asms_main.push("\tsub rsp, 8\n".to_string());
                 self.current_stack_offset -= SIZES.d_ptr as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
                     offset: self.current_stack_offset,
@@ -112,28 +118,84 @@ impl<'a> Compiler<'a> {
                 return Err(CompilerError::UnknownDataType);
             }
         }
+        asms_main.push("\n".to_string());
         Ok(asms_main)
     }
 
+    pub fn compile_function_declaration_statement(&mut self, stmt: &FunctionDeclaration<'a>) -> Result<(String, Vec<String>), CompilerError> {
+        let old_sp = self.current_stack_offset;
+        self.current_stack_offset = 0;
+        let mut body_stmts = vec![
+            "\tpush rbp\n".to_string(),
+            "\tmov rbp, rsp\n".to_string(),
+        ];
+        // will be used to later check if the function is returning by itself or not.
+        let mut has_explicit_return = false;
+        for body_statement in &stmt.body.values {
+            if let Statement::ReturnStatement(_) = body_statement {
+                has_explicit_return = true;
+            }
+            if let Ok(value) = self.compile_statement(body_statement) {
+                for compiled_stmt in value {
+                    body_stmts.push(compiled_stmt);
+                }
+            }
+        }
+
+        if !has_explicit_return {
+            body_stmts.push("\tmov rax, 0\n".to_string());
+            body_stmts.push("\tleave\n".to_string());
+            body_stmts.push("\tret\n".to_string());
+        } else {
+            body_stmts.push("\tleave\n".to_string());
+            body_stmts.push("\tret\n".to_string());
+        }
+        self.current_stack_offset = old_sp;
+        Ok((stmt.name.to_string(), body_stmts))
+    }
+
+    pub fn compile_return_statement(&mut self, ret: &ReturnStatement<'a>) -> Result<Vec<String>, CompilerError> {
+        let x = &ret.value;
+        let mut main_asm_for_return = vec![];
+        if let Ok(compiled_literal) = self.compile_expression(x, "rax") {
+            for v in compiled_literal {
+                main_asm_for_return.push(v);
+            }
+            Ok(main_asm_for_return)
+        } else {
+            Ok(vec![
+                "mov rax, -1".to_string(),
+                "leave".to_string(),
+                "ret".to_string()
+            ])
+        }
+    }
+
     pub fn compile_expression_statement(&mut self, stmt: &ExpressionStatement<'a>) -> Result<Vec<String>, CompilerError> {
-        self.compile_expression(&stmt.value)
+        let compiled = self.compile_expression(&stmt.value, "rax");
+        if let Ok(mut x) = compiled{
+            x.insert(0, "; Expression Statement".to_string());
+            Ok(x)
+        } else {
+            compiled
+        }
     }
 
     // #[allow(clippy::only_used_in_recursion)]
-    pub fn compile_expression(&mut self, expr: &Expression<'a>) -> Result<Vec<String>, CompilerError> {
+    pub fn compile_expression(&mut self, expr: &Expression<'a>, register: &'a str) -> Result<Vec<String>, CompilerError> {
         let mut asms_main = vec![];
         match expr {
             Expression::Binary(bin) => {
-                if let Ok(compiled_asms) = self.compile_expression(&bin.left) {
+                if let Ok(compiled_asms) = self.compile_expression(&bin.left, register) {
                     for asm in compiled_asms {
                         asms_main.push(asm);
                     }
                 }
 
-                self.asm.push("\tsub rsp, 8\n".to_string());
+                asms_main.push("\tsub rsp, 8\n".to_string());
                 asms_main.push("\tpush rax\n".to_string());
 
-                if let Ok(compiled_asms) = self.compile_expression(&bin.right) {
+                if let Ok(compiled_asms) = self.compile_expression(&bin.right, register) {
                     for asm in compiled_asms {
                         asms_main.push(asm);
                     }
@@ -142,9 +204,9 @@ impl<'a> Compiler<'a> {
                 asms_main.push("\tpop rbx\n".to_string());
                 asms_main.push("\tadd rsp, 8\n".to_string());
                 match bin.operator.token_type {
-                    TokenType::Plus => asms_main.push("\tadd rax, rbx\n".to_string()),
-                    TokenType::Minus =>asms_main.push("\tsub rax, rbx\n".to_string()),
-                    TokenType::Star => asms_main.push("\timul rax, rbx\n".to_string()),
+                    TokenType::Plus => asms_main.push(format!("\tadd {}, rbx\n", register)),
+                    TokenType::Minus =>asms_main.push(format!("\tsub {}, rbx\n", register)),
+                    TokenType::Star => asms_main.push(format!("\timul {}, rbx\n", register)),
                     TokenType::Slash => {
                         asms_main.push("\tmov rdx, 0\n".to_string());
                         asms_main.push("\tmov rcx, rax\n".to_string());
@@ -157,10 +219,10 @@ impl<'a> Compiler<'a> {
 
             Expression::Literal(lit) => match &lit.value.meta_data {
                 AnyMetadata::Number { value: NumberType::Integer(val) } => {
-                    asms_main.push(format!("\tmov rax, {}\n", val));
+                    asms_main.push(format!("\tmov {}, {}\n", register, val));
                 }
                 AnyMetadata::Number { value: NumberType::Float(val) } => {
-                    asms_main.push(format!("\tmov rax, {:.9}\n", val));
+                    asms_main.push(format!("\tmov {}, {:.9}\n", register, val));
                 }
                 AnyMetadata::Identifier { value } => {
                     let variable_symbol = self.symbol_table.get(value);
@@ -193,9 +255,9 @@ impl<'a> Compiler<'a> {
                     }
                 }
                 AnyMetadata::String { value } => {
-                    self.data_section.push(format!("var_{} db {}, 0\n", self.data_counter, (*value)).to_string());
-                    self.data_section.push(format!("var_len_{} equ {}\n", self.data_counter, (*value).len()).to_string());
-                    asms_main.push(format!("\tlea rax, [rel var_{}]\n", self.data_counter).to_string());
+                    self.data_section.push(format!("\tLC_{} db {}, 0\n", self.data_counter, (*value)).to_string());
+                    self.data_section.push(format!("\tLC_len_{} equ {}\n", self.data_counter, (*value).len()).to_string());
+                    asms_main.push(format!("\tlea rax, [rel LC_{}]\n", self.data_counter).to_string());
                 }
                 _ => unimplemented!("Only number literals supported for now"),
             },
