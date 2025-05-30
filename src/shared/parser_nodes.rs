@@ -1,4 +1,4 @@
-use super::{meta::AnyMetadata, tokens::{ Token, TokenType }};
+use super::{meta::AnyMetadata, positions::Position, tokens::{ Token, TokenType }};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -60,7 +60,9 @@ pub struct FunctionDeclaration<'a> {
     pub name: &'a str,
     pub arity: usize,
     pub arguments: Vec<Argument<'a>>,
-    pub body: BlockStatement<'a>
+    pub body: BlockStatement<'a>,
+    pub return_type: TokenType,
+    pub position: Position
 }
 
 #[allow(dead_code)]
@@ -68,24 +70,28 @@ pub struct FunctionDeclaration<'a> {
 pub struct VarDeclarationStatement<'a> {
     pub name: &'a str,
     pub value: Expression<'a>,
-    pub variable_type: TokenType
+    pub variable_type: TokenType,
+    pub position: Position
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ExpressionStatement<'a> {
     pub value: Expression<'a>,
+    pub position: Position
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct BlockStatement<'a> {
-    pub values: Vec<Statement<'a>>
+    pub values: Vec<Statement<'a>>,
+    pub position: Position
 }
 
 
 #[derive(Debug, Clone)]
 pub struct ReturnStatement<'a> {
-    pub value: Expression<'a>
+    pub value: Expression<'a>,
+    pub position: Position
 }
 

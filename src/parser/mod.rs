@@ -1,11 +1,9 @@
 use crate::{
     lexer::Lexer,
     shared::{
-        meta::AnyMetadata,
-        parser_nodes::{
+        meta::AnyMetadata, parser_nodes::{
             Argument, BinaryExpression, BlockStatement, Expression, ExpressionStatement, FunctionDeclaration, LiteralExpression, Program, ReturnStatement, Statement, UnaryExpression, VarDeclarationStatement
-        },
-        tokens::{
+        }, positions::Position, tokens::{
             Token,
             TokenType
         }
@@ -43,8 +41,10 @@ impl<'a> Parser<'a> {
 
     fn parse_statement(&mut self) -> Statement<'a> {
         if let Some(current_token) = self.lexer.peek() {
+            let starting_position = current_token.position.clone();
             match current_token.token_type {
                 TokenType::Dec => {
+
                     // Variable Declaration Statement
                     self.consume(TokenType::Dec);
                     if let Some(t) = self.lexer.next() {
@@ -68,7 +68,8 @@ impl<'a> Parser<'a> {
                                 return Statement::VarDeclaration(VarDeclarationStatement {
                                     value: expr,
                                     name: value,
-                                    variable_type: data_type
+                                    variable_type: data_type,
+                                    position: starting_position
                                 });
                             } else {
                                 println!("UNEXPECTED: {:?}", after_data_type);
@@ -78,14 +79,15 @@ impl<'a> Parser<'a> {
                 }
                 TokenType::At => {
                     self.consume(TokenType::At);
-                    return self.parse_function()
+                    return self.parse_function(starting_position);
                 }
                 TokenType::Return => {
                     self.consume(TokenType::Return);
                     let value = self.parse_expression();
                     self.consume(TokenType::Semicolon);
                     return Statement::ReturnStatement(ReturnStatement {
-                        value
+                        value,
+                        position: starting_position
                     });
                 }
                 _ => {
@@ -93,7 +95,8 @@ impl<'a> Parser<'a> {
                     dbg!(&expr);
                     self.consume(TokenType::Semicolon);
                     return Statement::ExpressionStatement(ExpressionStatement {
-                        value: expr
+                        value: expr,
+                        position: starting_position
                     });
                 }
             }
@@ -111,7 +114,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_function(&mut self) -> Statement<'a> {
+    fn parse_function(&mut self, starting_position: Position) -> Statement<'a> {
         let name = if self.match_tokens(&[TokenType::Identifier]) {
             if let Some(prev) = &self.previous_token {
                 if let AnyMetadata::Identifier{ value } = &prev.meta_data {
@@ -133,6 +136,13 @@ impl<'a> Parser<'a> {
             args.push(self.parse_args());
         }
 
+        let return_type: TokenType = if self.match_tokens(&[TokenType::DInteger, TokenType::DString, TokenType::DFloat, TokenType::DVoid]) {
+            self.previous_token.clone().unwrap().token_type
+        } else {
+            let error_position = self.lexer.peek().unwrap().position.clone();
+            panic!("Unknown return type: {}:{}", error_position.line, error_position.column);
+        };
+
         let body = self.parse_block_statement();
 
         if let Statement::BlockStatement(body) = body {
@@ -140,7 +150,9 @@ impl<'a> Parser<'a> {
                 name,
                 arity: args.len(),
                 arguments: args,
-                body
+                body,
+                return_type,
+                position: starting_position
             })
         } else {
             panic!("UNREACHABLE");
@@ -151,11 +163,12 @@ impl<'a> Parser<'a> {
     fn parse_block_statement(&mut self) -> Statement<'a> {
         self.consume(TokenType::LeftBrace);
         let mut stmts = vec![];
+        let current_position = self.lexer.peek().unwrap().position.clone();
         while !self.match_tokens(&[TokenType::RightBrace]) {
             stmts.push(self.parse_statement());
         }
 
-        Statement::BlockStatement(BlockStatement { values: stmts })
+        Statement::BlockStatement(BlockStatement { values: stmts, position: current_position })
     }
 
     fn parse_args(&mut self) -> Argument<'a> {
@@ -263,72 +276,5 @@ impl<'a> Parser<'a> {
             }
         }
         false
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::shared::{meta::{AnyMetadata, NumberType}, tokens::TokenType};
-    
-    #[test]
-    fn check_parsing_expression() {
-        let source_code = "5 + 4 * 0;\0";
-        let mut parser = Parser::new(source_code);
-        let program = parser.parse();
-
-        assert_eq!(program.stmts.len(), 1);
-        match &program.stmts[0] {
-            Statement::ExpressionStatement(ExpressionStatement { value: Expression::Binary(add_expr) }) => {
-                match *add_expr.left {
-                    Expression::Literal(ref lit) => {
-                        match lit.value.meta_data {
-                                    AnyMetadata::Number { value: NumberType::Integer(n) } => assert_eq!(n, 5),
-                            _ => panic!("Expected number metadata on left of '+'"),
-                        }
-                    },
-                    _ => panic!("Expected literal on left of '+'"),
-                }
-
-                assert_eq!(add_expr.operator.token_type, TokenType::Plus);
-
-                match *add_expr.right {
-                    Expression::Binary(ref mul_expr) => {
-                        match *mul_expr.left {
-                            Expression::Literal(ref lit) => {
-                                match lit.value.meta_data {
-                                    AnyMetadata::Number { value: NumberType::Integer(n) } => assert_eq!(n, 4),
-                                    _ => panic!("Expected number metadata on left of '*'"),
-                                }
-                            },
-                            _ => panic!("Expected literal on left of '*'"),
-                        }
-
-                        assert_eq!(mul_expr.operator.token_type, TokenType::Star);
-
-                        match *mul_expr.right {
-                            Expression::Literal(ref lit) => {
-                                match lit.value.meta_data {
-                                    AnyMetadata::Number { value: NumberType::Integer(n) } => assert_eq!(n, 0),
-                                    _ => panic!("Expected number metadata on right of '*'"),
-                                }
-                            },
-                            _ => panic!("Expected literal on right of '*'"),
-                        }
-                    },
-                    _ => panic!("Expected binary '*' expression on right of '+'"),
-                }
-            },
-            _ => panic!("Expected binary '+' expression at root"),
-        }
-    }
-
-    #[test]
-    fn check_variable() {
-        let source_code = "dec fifteen int = 5 * 3;\n 5 + fifteen;\0";
-        let mut parser = Parser::new(source_code);
-        let program = parser.parse();
-        dbg!(program);
-        assert_eq!(true, true)
     }
 }

@@ -33,6 +33,7 @@ pub enum TokenType {
     String,
     Integer,
     Float,
+    Void,
     Character,
 
     // Ffi Stuffs
@@ -61,6 +62,7 @@ pub enum TokenType {
     DFloat,
     DChar,
     DString,
+    DVoid,
 
     // End of file.
     Eof,

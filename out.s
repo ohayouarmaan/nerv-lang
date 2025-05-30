@@ -29,6 +29,6 @@ main:
 	sub rsp, 4
 	mov DWORD [rsp], eax
 
-  call functionA
+	mov rax, 5
 	leave
 	ret

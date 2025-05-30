@@ -97,6 +97,7 @@ impl<'a> Lexer<'a> {
             "string" => Ok(TokenType::DString),
             "char" => Ok(TokenType::DChar),
             "float" => Ok(TokenType::DFloat),
+            "void" => Ok(TokenType::DVoid),
             "extern" => Ok(TokenType::Extern),
             _ => Err(LexerError::IllegalKeyword),
         }
