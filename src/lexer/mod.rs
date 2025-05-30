@@ -99,6 +99,7 @@ impl<'a> Lexer<'a> {
             "float" => Ok(TokenType::DFloat),
             "void" => Ok(TokenType::DVoid),
             "extern" => Ok(TokenType::Extern),
+            "unit" => Ok(TokenType::Void),
             _ => Err(LexerError::IllegalKeyword),
         }
     }
@@ -109,7 +110,6 @@ impl<'a> Lexer<'a> {
         while self.can_move(){
             let ch = self.get_current_character().map_err(|_| LexerError::UnexpectedEof)?;
             if !ch.is_ascii_alphabetic() {
-                println!("CH: {:?}, {:?}", ch, self.position);
                 break
             }
             self.advance().map_err(|_| LexerError::UnexpectedEof)?;

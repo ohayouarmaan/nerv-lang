@@ -1,9 +1,8 @@
-@main(int x) int {
-  dec x int = 3;
-  return 5;
+@main() int {
+  dec x int = functionA(2 + 2);
+  return x;
 }
 
 @functionA(int y) int {
-  dec y int = 2;
   return y;
 }

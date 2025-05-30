@@ -129,6 +129,25 @@ impl<'a> Compiler<'a> {
             "\tpush rbp\n".to_string(),
             "\tmov rbp, rsp\n".to_string(),
         ];
+        if stmt.arity > 0 {
+            let order = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+            let order_32_bit = ["edi", "esi", "edx", "ecx", "e8", "e9"];
+            (0..stmt.arity).for_each(|i| {
+                let (size, operand_size, register): (usize, &'a str, &'a str) = match stmt.arguments[i].arg_type {
+                    TokenType::DInteger => (4, "DWORD", order_32_bit[i]),
+                    TokenType::DFloat => (8, "QWORD", order[i]),
+                    TokenType::DString => (8, "QWORD", order[i]),
+                    _ => unimplemented!("Can not determine size of other things.")
+                };
+                body_stmts.push(format!("\tsub rsp, {}\n", size));
+                self.current_stack_offset -= size as isize;
+                body_stmts.push(format!("\tmov {} [rbp-{}], {}\n", operand_size, self.current_stack_offset.abs(), register));
+                self.symbol_table.insert(stmt.arguments[i].name, Symbol {
+                    offset: self.current_stack_offset,
+                    size
+                });
+            });
+        }
         // will be used to later check if the function is returning by itself or not.
         let mut has_explicit_return = false;
         for body_statement in &stmt.body.values {
@@ -193,7 +212,7 @@ impl<'a> Compiler<'a> {
                 }
 
                 asms_main.push("\tsub rsp, 8\n".to_string());
-                asms_main.push("\tpush rax\n".to_string());
+                asms_main.push(format!("\tpush {}\n", register));
 
                 if let Ok(compiled_asms) = self.compile_expression(&bin.right, register) {
                     for asm in compiled_asms {
@@ -261,8 +280,17 @@ impl<'a> Compiler<'a> {
                 }
                 _ => unimplemented!("Only number literals supported for now"),
             },
-            
-            _ => unimplemented!("Only number literals supported for now"),
+            Expression::Call(c) => {
+                let order = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+                for i in 0..c.arguments.len() {
+                    let value = self.compile_expression(&c.arguments[i], order[i])?;
+                    for v in value {
+                        asms_main.push(v);
+                    }
+                }
+                asms_main.push(format!("\tcall {}\n", c.name));
+            }
+            _ => unimplemented!("Only number literals supported for now found: {:?}", expr),
         }
         Ok(asms_main)
     }

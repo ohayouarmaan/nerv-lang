@@ -28,6 +28,7 @@ pub enum Declaration<'a> {
 pub struct TypeEnv {
     return_type: Option<TokenType>,
     vars: HashMap<String, TokenType>,
+    functions: HashMap<String, (TokenType, Vec<TokenType>)>
 }
 
 impl<'a> TypeChecker<'a> {
@@ -37,6 +38,7 @@ impl<'a> TypeChecker<'a> {
             env: TypeEnv {
                 return_type: None,
                 vars: HashMap::new(),
+                functions: HashMap::new(),
             },
         }
     }
@@ -46,6 +48,15 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn start_type_checking(&mut self, stmts: Vec<Statement<'a>>) {
+        for x in stmts.clone() {
+            if let Statement::FunctionDeclaration(t) = x {
+                let mut args = vec![];
+                for arg in t.arguments {
+                    args.push(arg.arg_type);
+                }
+                self.env.functions.insert(t.name.to_string(), (t.return_type, args));
+            }
+        }
         for stmt in stmts {
             match stmt {
                 Statement::VarDeclaration(var_decl) => self.type_check_var_declaration(var_decl),
@@ -102,16 +113,20 @@ impl<'a> TypeChecker<'a> {
 
     pub fn type_check_function(&mut self, fx: FunctionDeclaration<'a>) {
         let return_type = fx.return_type;
+        let old_env = self.env.clone();
         self.env.return_type = Some(return_type);
 
+        let mut args = vec![];
         for param in &fx.arguments {
+            args.push(param.arg_type);
             self.env
                 .vars
                 .insert(param.name.to_string(), param.arg_type);
         }
-
+        
         self.type_check_block_statement(fx.body);
-        self.env.return_type= None;
+        self.env = old_env;
+        self.env.functions.insert(fx.name.to_string(), (return_type, args));
     }
 
     fn eval_expression(&self, expr: &Expression<'a>) -> TokenType {
@@ -139,6 +154,20 @@ impl<'a> TypeChecker<'a> {
                 }
             },
             Expression::Unary(_) => TokenType::DInteger,
+            Expression::Call(c) => {
+                if let Some((result, args)) = self.env.functions.get(c.name) {
+                    (0..c.arguments.len()).for_each(|i| {
+                        let arg = c.arguments[i].clone();
+                        let arg_type = self.eval_expression(&arg);
+                        if arg_type != args[i] {
+                            panic!("Expected argument type to be {:?} instead got {:?} {}:{}", args[i], arg_type, c.position.line, c.position.column);
+                        }
+                    });
+                    *result
+                } else {
+                    panic!("No such function exists.");
+                }
+            },
             Expression::Literal(literal_expression) => {
                 match literal_expression.value.token_type {
                     TokenType::Integer => TokenType::DInteger,

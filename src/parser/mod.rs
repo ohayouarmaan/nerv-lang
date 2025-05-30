@@ -2,7 +2,7 @@ use crate::{
     lexer::Lexer,
     shared::{
         meta::AnyMetadata, parser_nodes::{
-            Argument, BinaryExpression, BlockStatement, Expression, ExpressionStatement, FunctionDeclaration, LiteralExpression, Program, ReturnStatement, Statement, UnaryExpression, VarDeclarationStatement
+            Argument, BinaryExpression, BlockStatement, CallExpression, Expression, ExpressionStatement, FunctionDeclaration, LiteralExpression, Program, ReturnStatement, Statement, UnaryExpression, VarDeclarationStatement
         }, positions::Position, tokens::{
             Token,
             TokenType
@@ -236,13 +236,43 @@ impl<'a> Parser<'a> {
         if let Some(token) = self.lexer.peek() {
             self.previous_token = Some(token.clone());
             let tok = self.lexer.next().expect("UNREACHABLE");
-            if  ([TokenType::Integer, TokenType::String, TokenType::Identifier, TokenType::String]).contains(&tok.token_type) {
+            let pos = tok.position.clone();
+            if  ([TokenType::Integer, TokenType::String, TokenType::Identifier, TokenType::String, TokenType::Void]).contains(&tok.token_type) {
+                if let Some(next_token) = self.lexer.peek() {
+                    if next_token.token_type == TokenType::LeftParen {
+                        let prev = self.previous_token.clone().unwrap();
+                        let _ = self.lexer.next();
+                        let (prev_name, pos) = if let AnyMetadata::Identifier{ value } = prev.meta_data {
+                            (value, prev.position)
+                        } else {
+                            panic!();
+                        };
+                        let mut args = vec![];
+                        while let Some(t) = self.lexer.peek() {
+                            if t.token_type == TokenType::RightParen {
+                                break;
+                            }
+                            let arg = self.parse_expression();
+                            args.push(arg);
+                            if !self.match_tokens(&[TokenType::Comma]) {
+                                continue;
+                            }
+                        }
+                        let _ = self.lexer.next();
+                        let e = Expression::Call(CallExpression {
+                            name: prev_name,
+                            arguments: args,
+                            position: pos
+                        });
+                        return e;
+                    }
+                }
                 let e = Expression::Literal(LiteralExpression {
                     value: tok
                 });
                 e
             } else {
-                panic!("INVALID");
+                panic!("INVALID Primary Type: {:?} {}:{} ", tok, pos.line, pos.column);
             }
         } else {
             panic!("UNREACHABLE");

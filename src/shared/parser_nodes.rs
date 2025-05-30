@@ -5,7 +5,8 @@ use super::{meta::AnyMetadata, positions::Position, tokens::{ Token, TokenType }
 pub enum Expression<'a> {
     Binary(BinaryExpression<'a>),
     Unary(UnaryExpression<'a>),
-    Literal(LiteralExpression<'a>)
+    Literal(LiteralExpression<'a>),
+    Call(CallExpression<'a>)
 }
 
 #[allow(dead_code)]
@@ -27,6 +28,14 @@ pub struct UnaryExpression<'a> {
 #[derive(Debug, Clone)]
 pub struct LiteralExpression<'a> {
     pub value: Token<AnyMetadata<'a>>
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct CallExpression<'a> {
+    pub name: &'a str,
+    pub arguments: Vec<Expression<'a>>,
+    pub position: Position
 }
 
 #[allow(dead_code)]

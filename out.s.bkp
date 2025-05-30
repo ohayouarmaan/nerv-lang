@@ -1,0 +1,34 @@
+section .data
+
+section .text
+    global main
+    global functionA
+
+main:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 4              ; space for local int x at [rbp - 4]
+
+    ; Call functionA(2)
+    mov rdi, 2              ; put 2 in first arg register (32-bit)
+    call functionA          ; return value in eax
+
+    mov QWORD [rbp - 4], rax ; store return value in x
+
+    ; return x
+    mov eax, DWORD [rbp - 4]
+    leave
+    ret
+
+functionA:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 4              ; space for local variable y at [rbp - 4]
+
+    ; Store incoming argument (in edi) into y
+    mov DWORD [rbp - 4], rdi
+
+    ; return y
+    mov eax, DWORD [rbp - 4]
+    leave
+    ret
