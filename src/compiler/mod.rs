@@ -1,7 +1,7 @@
 use core::panic;
 use std::{collections::HashMap, fs::File};
 use crate::shared::{
-    compiler_defaults::SIZES, errors::CompilerError, meta::{ AnyMetadata, NumberType }, parser_nodes::{Expression, ExpressionStatement, FunctionDeclaration, Program, ReturnStatement, Statement, VarDeclarationStatement}, tokens::TokenType
+    compiler_defaults::SIZES, errors::CompilerError, meta::{ AnyMetadata, NumberType }, parser_nodes::{Expression, ExpressionStatement, FunctionDeclaration, LiteralExpression, Program, ReturnStatement, Statement, VarDeclarationStatement, VariableReassignmentStatement}, tokens::{Token, TokenType}
 };
 
 pub struct Symbol {
@@ -78,9 +78,33 @@ impl<'a> Compiler<'a> {
             Statement::ExpressionStatement(e) => self.compile_expression_statement(e),
             Statement::VarDeclaration(var) => self.compile_variable_declaration_statement(var),
             Statement::ReturnStatement(ret) => self.compile_return_statement(ret),
+            Statement::VariableReassignmentStatement(vrs) => self.compile_variable_reassignment_statement(vrs),
             _ => {
-                Err(CompilerError::UnexpectedStandaloneBlock)
+                Err(CompilerError::UnexpectedStatement)
             }
+        }
+    }
+
+    pub fn compile_variable_reassignment_statement(&mut self, stmt: &VariableReassignmentStatement<'a>) -> Result<Vec<String>, CompilerError> {
+        let compiled_lhs = self.compile_address(&stmt.lhs, "rax");
+        let compiled_rhs = self.compile_expression(&stmt.rhs, "rbx");
+        let mut asms_main = vec![];
+        if let Ok(compiled_lhs) =  compiled_lhs {
+            for lhs_asm in compiled_lhs {
+                asms_main.push(lhs_asm);
+            }
+
+            if let Ok(compiled_rhs) =  compiled_rhs {
+                for rhs_asm in compiled_rhs {
+                    asms_main.push(rhs_asm);
+                }
+                asms_main.push("\tmov [rax], rbx\n".to_string());
+                Ok(asms_main)
+            } else {
+                panic!("{:?}", compiled_rhs);
+            }
+        } else {
+            panic!("{:?}", compiled_lhs);
         }
     }
 
@@ -155,10 +179,13 @@ impl<'a> Compiler<'a> {
             if let Statement::ReturnStatement(_) = body_statement {
                 has_explicit_return = true;
             }
-            if let Ok(value) = self.compile_statement(body_statement) {
+            let compiled = self.compile_statement(body_statement);
+            if let Ok(value) = compiled{
                 for compiled_stmt in value {
                     body_stmts.push(compiled_stmt);
                 }
+            } else {
+                panic!("{:?}", compiled);
             }
         }
 
@@ -218,7 +245,20 @@ impl<'a> Compiler<'a> {
     }
 
 
-    // #[allow(clippy::only_used_in_recursion)]
+    fn emit_address_of_variable(&mut self, var_name: &str, target_register: &str) -> Result<Vec<String>, CompilerError> {
+        let s = self.symbol_table.get(var_name).unwrap();
+        return Ok(vec![format!("\tlea {}, [rbp{}]\n", target_register, s.offset)]);
+    }
+
+    fn compile_address(&mut self, expr: &Expression<'a>, register: &'a str) -> Result<Vec<String>, CompilerError> {
+        match expr {
+            Expression::Literal(LiteralExpression { value: Token { meta_data: AnyMetadata::Identifier { value: name }, .. }, .. }) => {
+                return self.emit_address_of_variable(name, register);
+            },
+            _ => return Err(CompilerError::InvalidLValue)
+        }
+    }
+
     pub fn compile_expression(&mut self, expr: &Expression<'a>, register: &'a str) -> Result<Vec<String>, CompilerError> {
         println!("expr: {:?}, register: {:?}", expr, register);
         let mut asms_main = vec![];

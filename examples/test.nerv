@@ -1,5 +1,5 @@
 @main() int {
   dec x int = 4;
   x = 2;
-  return 0;
+  return x;
 }

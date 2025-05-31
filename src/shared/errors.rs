@@ -14,6 +14,7 @@ pub enum CompilerError {
     CanNotWrite,
     UnknownDataType,
     UnsupportedOperator,
-    UnexpectedStandaloneBlock
+    UnexpectedStatement,
+    InvalidLValue
 }
 

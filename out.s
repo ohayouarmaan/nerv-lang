@@ -10,6 +10,9 @@ main:
 	sub rsp, 4
 	mov DWORD [rsp], eax
 
-	mov rax, 0
+	lea rax, [rbp-4]
+	mov rbx, 2
+	mov [rax], rbx
+	mov eax, DWORD [rbp-4]
 	leave
 	ret
