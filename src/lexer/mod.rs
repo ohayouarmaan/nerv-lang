@@ -203,7 +203,8 @@ impl<'a> Iterator for Lexer<'a> {
                     '\n' => {
                         self.current_line += 1;
                         self.current_column = 0;
-                        self.advance().ok()?
+                        self.advance().ok()?;
+                        lexeme_start = self.position;
                     }
 
 
@@ -227,6 +228,7 @@ impl<'a> Iterator for Lexer<'a> {
                     },
                     ';' => {
                         self.advance().ok()?;
+                        dbg!("New Char: ", self.source_code.chars().collect::<Vec<_>>()[self.position]);
                         return Some(Token {
                             token_type: TokenType::Semicolon,
                             position: Position::new(self.current_line, self.current_column),

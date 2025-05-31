@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::shared::{
     meta::AnyMetadata, parser_nodes::{
-        BlockStatement, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, Program, ReturnStatement, Statement, VarDeclarationStatement
+        BlockStatement, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, Program, ReturnStatement, Statement, VarDeclarationStatement, VariableReassignmentStatement
     }, tokens::TokenType
 };
 
@@ -65,7 +65,16 @@ impl<'a> TypeChecker<'a> {
                 Statement::BlockStatement(block_stmt) => self.type_check_block_statement(block_stmt),
                 Statement::ReturnStatement(ret_stmt) => self.type_check_return_statement(ret_stmt),
                 Statement::ExternStatement(ex) => self.type_check_extern_statement(ex),
+                Statement::VariableReassignmentStatement(vrs) => self.type_check_reassignment_statement(vrs),
             }
+        }
+    }
+
+    pub fn type_check_reassignment_statement(&self, vrs: VariableReassignmentStatement<'a>) {
+        let ldata_type = self.eval_expression(&vrs.lhs);
+        let rdata_type = self.eval_expression(&vrs.rhs);
+        if ldata_type != rdata_type {
+            panic!("Left Hand Side is of type {:?} and you're trying to assign {:?}", ldata_type, rdata_type);
         }
     }
 

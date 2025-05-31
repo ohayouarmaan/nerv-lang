@@ -25,7 +25,6 @@ pub struct Compiler<'a> {
 #[allow(dead_code)]
 impl<'a> Compiler<'a> {
     pub fn new(ast: Program<'a>, out_file: &'a str) -> Result<Self, CompilerError> {
-        dbg!(&ast);
         let file = match File::create(out_file) {
             Ok(handler) => handler,
             Err(_) => return Err(CompilerError::IllegalOutputFile)

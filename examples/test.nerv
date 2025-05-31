@@ -1,11 +1,5 @@
-extern printf(string, int) void;
-
 @main() int {
-  dec x int = 2;
-  printf("Something %d", 2);
-  return 2;
-}
-
-@functionA(float y) float {
-  return y;
+  dec x int = 4;
+  x = 2;
+  return 0;
 }

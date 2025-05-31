@@ -1,32 +1,15 @@
 section .data
-	LC_0 db "Something %d\n", 0
-	LC_len_0 equ 16
 section .text
-	extern printf
 	global main
-	global functionA
 main:
 	push rbp
 	mov rbp, rsp
 
 	; VARIABLE DECLARATION
-	mov rax, 2
+	mov rax, 4
 	sub rsp, 4
 	mov DWORD [rsp], eax
 
-; Expression Statement
-	lea rdi, [rel LC_0]
-	mov rsi, 2
-	xor rax, rax
-	call printf
-	mov rax, 2
-	leave
-	ret
-functionA:
-	push rbp
-	mov rbp, rsp
-	sub rsp, 8
-	mov QWORD [rbp-8], rdi
-	mov rax, QWORD [rbp-8]
+	mov rax, 0
 	leave
 	ret

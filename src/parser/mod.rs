@@ -2,7 +2,7 @@ use crate::{
     lexer::Lexer,
     shared::{
         meta::AnyMetadata, parser_nodes::{
-            Argument, BinaryExpression, BlockStatement, CallExpression, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, FunctionSignatureDeclaration, LiteralExpression, Program, ReturnStatement, Statement, UnaryExpression, VarDeclarationStatement
+            Argument, BinaryExpression, BlockStatement, CallExpression, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, FunctionSignatureDeclaration, LiteralExpression, Program, ReturnStatement, Statement, UnaryExpression, VarDeclarationStatement, VariableReassignmentStatement
         }, positions::Position, tokens::{
             Token,
             TokenType
@@ -55,7 +55,7 @@ impl<'a> Parser<'a> {
                         if let AnyMetadata::Identifier{ value } = t.meta_data {
                             let data_type: TokenType;
                             let c_token = self.lexer.next();
-                            if let Some(Token { token_type, .. }) = c_token{
+                            if let Some(Token { token_type, .. }) = c_token {
                                 data_type = token_type;
                             } else {
                                 panic!("Invalid data type. {:?}", c_token);
@@ -107,7 +107,7 @@ impl<'a> Parser<'a> {
                     self.consume(TokenType::LeftParen);
                     let mut args: Vec<TokenType> = vec![];
                     while !self.match_tokens(&[TokenType::RightParen]) {
-                        if self.match_tokens(&[TokenType::DFloat, TokenType::DInteger, TokenType::DString]){
+                        if self.match_tokens(&[TokenType::DFloat, TokenType::DInteger, TokenType::DString, TokenType::DVoid]){
                             args.push(self.previous_token.clone().unwrap().token_type);
                         }
                         if self.match_tokens(&[TokenType::Comma]) {
@@ -125,12 +125,14 @@ impl<'a> Parser<'a> {
                         panic!("Invalid Return Type ({:?}) for extern Statement: {}:{}", self.lexer.peek(),self.previous_token.clone().unwrap().position.line, self.previous_token.clone().unwrap().position.column);
                     };
 
+                    dbg!(self.lexer.peek());
                     self.consume(TokenType::Semicolon);
                     let fx_sig = FunctionSignatureDeclaration {
                         fx_name,
                         args,
                         return_type,
                     };
+                    dbg!("new", self.lexer.peek());
                     return Statement::ExternStatement(ExternFunctionStatement {
                         fx_name,
                         fx_sig
@@ -138,7 +140,19 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     let expr = self.parse_expression();
-                    dbg!(&expr);
+                    if self.match_tokens(&[TokenType::Equal]) {
+                        let rhs = self.parse_expression();
+                        self.consume(TokenType::Semicolon);
+                        if expr.is_lvalue() {
+                            return Statement::VariableReassignmentStatement(VariableReassignmentStatement {
+                                lhs: expr,
+                                rhs
+                            })
+                        } else {
+                            let position = self.previous_token.clone().unwrap().position;
+                            panic!("Trying to assign to something which can not be assigned, not an lvalue: {}:{}", position.line, position.column);
+                        }
+                    }
                     self.consume(TokenType::Semicolon);
                     return Statement::ExpressionStatement(ExpressionStatement {
                         value: expr,

@@ -9,6 +9,14 @@ pub enum Expression<'a> {
     Call(CallExpression<'a>)
 }
 
+impl Expression<'_> {
+    pub fn is_lvalue(&self) -> bool {
+        matches!(self, Self::Literal(LiteralExpression{ value: Token{ meta_data: AnyMetadata::Identifier{..}, .. }, .. }) if {
+            true
+        })
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct BinaryExpression<'a> {
@@ -54,7 +62,14 @@ pub enum Statement<'a> {
     FunctionDeclaration(FunctionDeclaration<'a>),
     BlockStatement(BlockStatement<'a>),
     ReturnStatement(ReturnStatement<'a>),
-    ExternStatement(ExternFunctionStatement<'a>)
+    ExternStatement(ExternFunctionStatement<'a>),
+    VariableReassignmentStatement(VariableReassignmentStatement<'a>)
+}
+
+#[derive(Debug, Clone)]
+pub struct VariableReassignmentStatement<'a> {
+    pub lhs: Expression<'a>,
+    pub rhs: Expression<'a>
 }
 
 #[allow(dead_code)]
