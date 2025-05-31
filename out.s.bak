@@ -1,10 +1,23 @@
 section .data
-	LC_0 db "Something %d\n", 0
-	LC_len_0 equ 16
+	LC_0 db "Something %d", 0
+	LC_len_0 equ 14
+
 section .text
 	extern printf
 	global main
 	global functionA
+
+functionA:
+	push rbp
+	mov rbp, rsp
+
+	sub rsp, 8
+	mov QWORD [rbp-8], rdi
+	mov rax, QWORD [rbp-8]
+
+	leave
+	ret
+
 main:
 	push rbp
 	mov rbp, rsp
@@ -14,19 +27,12 @@ main:
 	sub rsp, 4
 	mov DWORD [rsp], eax
 
+  xor eax, eax               ; required for variadic
 ; Expression Statement
 	lea rdi, [rel LC_0]
 	mov rsi, 2
-	xor rax, rax
 	call printf
+
 	mov rax, 2
-	leave
-	ret
-functionA:
-	push rbp
-	mov rbp, rsp
-	sub rsp, 8
-	mov QWORD [rbp-8], rdi
-	mov rax, QWORD [rbp-8]
 	leave
 	ret

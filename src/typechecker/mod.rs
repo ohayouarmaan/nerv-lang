@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::shared::{
     meta::AnyMetadata, parser_nodes::{
-        BlockStatement, Expression, ExpressionStatement, FunctionDeclaration, Program, ReturnStatement, Statement, VarDeclarationStatement
+        BlockStatement, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, Program, ReturnStatement, Statement, VarDeclarationStatement
     }, tokens::TokenType
 };
 
@@ -64,8 +64,22 @@ impl<'a> TypeChecker<'a> {
                 Statement::FunctionDeclaration(func_decl) => self.type_check_function_declaration(func_decl),
                 Statement::BlockStatement(block_stmt) => self.type_check_block_statement(block_stmt),
                 Statement::ReturnStatement(ret_stmt) => self.type_check_return_statement(ret_stmt),
+                Statement::ExternStatement(ex) => self.type_check_extern_statement(ex),
             }
         }
+    }
+
+    pub fn type_check_extern_statement(&mut self, ex: ExternFunctionStatement<'a>)  {
+        let return_type = ex.fx_sig.return_type;
+        self.env.return_type = Some(return_type);
+
+        let mut args = vec![];
+        for param in &ex.fx_sig.args {
+            args.push(*param);
+        }
+        
+        self.env.functions.insert(ex.fx_sig.fx_name.to_string(), (return_type, args));
+
     }
 
     pub fn type_check_var_declaration(&mut self, v: VarDeclarationStatement<'a>) {

@@ -2,13 +2,14 @@ use crate::{
     lexer::Lexer,
     shared::{
         meta::AnyMetadata, parser_nodes::{
-            Argument, BinaryExpression, BlockStatement, CallExpression, Expression, ExpressionStatement, FunctionDeclaration, LiteralExpression, Program, ReturnStatement, Statement, UnaryExpression, VarDeclarationStatement
+            Argument, BinaryExpression, BlockStatement, CallExpression, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, FunctionSignatureDeclaration, LiteralExpression, Program, ReturnStatement, Statement, UnaryExpression, VarDeclarationStatement
         }, positions::Position, tokens::{
             Token,
             TokenType
         }
     }
 };
+use core::panic;
 use std::iter::Peekable;
 
 #[allow(dead_code)]
@@ -88,6 +89,51 @@ impl<'a> Parser<'a> {
                     return Statement::ReturnStatement(ReturnStatement {
                         value,
                         position: starting_position
+                    });
+                }
+                TokenType::Extern => {
+                    self.consume(TokenType::Extern);
+                    let fx_name = if self.match_tokens(&[TokenType::Identifier]) {
+                        let fx_token = self.previous_token.clone().unwrap();
+                        if let AnyMetadata::Identifier { value } = fx_token.meta_data {
+                            value
+                        } else {
+                            panic!("Expected {:?} got {:?}", TokenType::Identifier, fx_token.token_type);
+                        }
+                    } else {
+                        panic!("Expected Identifier got {:?}", self.previous_token);
+                    };
+
+                    self.consume(TokenType::LeftParen);
+                    let mut args: Vec<TokenType> = vec![];
+                    while !self.match_tokens(&[TokenType::RightParen]) {
+                        if self.match_tokens(&[TokenType::DFloat, TokenType::DInteger, TokenType::DString]){
+                            args.push(self.previous_token.clone().unwrap().token_type);
+                        }
+                        if self.match_tokens(&[TokenType::Comma]) {
+                            continue;
+                        }
+                    }
+
+                    let return_type: TokenType = if self.match_tokens(&[TokenType::DString, TokenType::DInteger, TokenType::DFloat, TokenType::DVoid]) {
+                        if let Some(prev) = &self.previous_token {
+                            prev.token_type
+                        } else {
+                            panic!("UNREACHABLE");
+                        }
+                    } else {
+                        panic!("Invalid Return Type ({:?}) for extern Statement: {}:{}", self.lexer.peek(),self.previous_token.clone().unwrap().position.line, self.previous_token.clone().unwrap().position.column);
+                    };
+
+                    self.consume(TokenType::Semicolon);
+                    let fx_sig = FunctionSignatureDeclaration {
+                        fx_name,
+                        args,
+                        return_type,
+                    };
+                    return Statement::ExternStatement(ExternFunctionStatement {
+                        fx_name,
+                        fx_sig
                     });
                 }
                 _ => {

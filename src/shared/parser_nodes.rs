@@ -53,7 +53,8 @@ pub enum Statement<'a> {
     ExpressionStatement(ExpressionStatement<'a>),
     FunctionDeclaration(FunctionDeclaration<'a>),
     BlockStatement(BlockStatement<'a>),
-    ReturnStatement(ReturnStatement<'a>)
+    ReturnStatement(ReturnStatement<'a>),
+    ExternStatement(ExternFunctionStatement<'a>)
 }
 
 #[allow(dead_code)]
@@ -102,5 +103,18 @@ pub struct BlockStatement<'a> {
 pub struct ReturnStatement<'a> {
     pub value: Expression<'a>,
     pub position: Position
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionSignatureDeclaration<'a> {
+    pub fx_name: &'a str,
+    pub args: Vec<TokenType>,
+    pub return_type: TokenType
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternFunctionStatement<'a> {
+    pub fx_name: &'a str,
+    pub fx_sig: FunctionSignatureDeclaration<'a> 
 }
 

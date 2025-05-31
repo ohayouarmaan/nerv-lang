@@ -1,8 +1,8 @@
 use core::panic;
 use std::{collections::HashMap, fs::File};
-use crate::{main, shared::{
+use crate::shared::{
     compiler_defaults::SIZES, errors::CompilerError, meta::{ AnyMetadata, NumberType }, parser_nodes::{Expression, ExpressionStatement, FunctionDeclaration, Program, ReturnStatement, Statement, VarDeclarationStatement}, tokens::TokenType
-}};
+};
 
 pub struct Symbol {
     pub offset: isize,
@@ -57,6 +57,8 @@ impl<'a> Compiler<'a> {
                 } else {
                     println!("Err: {:?}", compiled_fx);
                 }
+            } else if let Statement::ExternStatement(ex) = &statement {
+                self.text_section.push(format!("\textern {}\n", ex.fx_name));
             }
         }
         self.asm.extend_from_slice(&self.data_section);
@@ -193,15 +195,33 @@ impl<'a> Compiler<'a> {
     pub fn compile_expression_statement(&mut self, stmt: &ExpressionStatement<'a>) -> Result<Vec<String>, CompilerError> {
         let compiled = self.compile_expression(&stmt.value, "rax");
         if let Ok(mut x) = compiled{
-            x.insert(0, "; Expression Statement".to_string());
+            x.insert(0, "; Expression Statement\n".to_string());
             Ok(x)
         } else {
             compiled
         }
     }
 
+    fn get_register_info(&self, register: &str) -> Option<(usize, &str, &str, &str, &str)> {
+        // Returns (size_bytes, 64bit, 32bit, 16bit, 8bit)
+        match register {
+            "rax" => Some((8, "rax", "eax", "ax", "al")),
+            "rbx" => Some((8, "rbx", "ebx", "bx", "bl")),
+            "rcx" => Some((8, "rcx", "ecx", "cx", "cl")),
+            "rdx" => Some((8, "rdx", "edx", "dx", "dl")),
+            "rdi" => Some((8, "rdi", "edi", "di", "dil")),
+            "rsi" => Some((8, "rsi", "esi", "si", "sil")),
+            "r8" => Some((8, "r8", "r8d", "r8w", "r8b")),
+            "r9" => Some((8, "r9", "r9d", "r9w", "r9b")),
+            // Add more registers as needed
+            _ => None,
+        }
+    }
+
+
     // #[allow(clippy::only_used_in_recursion)]
     pub fn compile_expression(&mut self, expr: &Expression<'a>, register: &'a str) -> Result<Vec<String>, CompilerError> {
+        println!("expr: {:?}, register: {:?}", expr, register);
         let mut asms_main = vec![];
         match expr {
             Expression::Binary(bin) => {
@@ -238,6 +258,7 @@ impl<'a> Compiler<'a> {
 
             Expression::Literal(lit) => match &lit.value.meta_data {
                 AnyMetadata::Number { value: NumberType::Integer(val) } => {
+                    dbg!(format!("\tmov {}, {}\n", register, val));
                     asms_main.push(format!("\tmov {}, {}\n", register, val));
                 }
                 AnyMetadata::Number { value: NumberType::Float(val) } => {
@@ -247,47 +268,80 @@ impl<'a> Compiler<'a> {
                     let variable_symbol = self.symbol_table.get(value);
                     match variable_symbol {
                         Some(s) => {
-                            // Choose register based on variable size
+                            // Get target register info
+                            let reg_info = self.get_register_info(register)
+                                .ok_or_else(|| {
+                                    panic!("Unsupported register: {}", register);
+                                })?;
+
+                            let (target_reg_size, reg_64, reg_32, reg_16, reg_8) = reg_info;
+
+                            // Check if we can fit the variable size into the target register
+                            if s.size > target_reg_size {
+                                panic!(
+                                    "Size mismatch: Variable '{}' has size {} bytes, but target register '{}' can only hold {} bytes",
+                                    value, s.size, register, target_reg_size
+                                );
+                            }
+
+                            // Generate appropriate mov instruction based on variable size
                             match s.size {
                                 4 => {
-                                    asms_main.push(format!("\tmov eax, DWORD [rbp{}]\n", s.offset));
+                                    asms_main.push(format!("\tmov {}, DWORD [rbp{}]\n", reg_32, s.offset));
+                                    // If target is 64-bit register, the upper 32 bits are automatically cleared
                                 }
                                 8 => {
-                                    asms_main.push(format!("\tmov rax, QWORD [rbp{}]\n", s.offset));
+                                    if target_reg_size < 8 {
+                                        panic!(
+                                            "Size mismatch: Variable '{}' is 8 bytes but target register '{}' is only {} bytes",
+                                            value, register, target_reg_size
+                                        );
+                                    }
+                                    asms_main.push(format!("\tmov {}, QWORD [rbp{}]\n", reg_64, s.offset));
                                 }
                                 2 => {
-                                    asms_main.push(format!("\tmov ax, WORD [rbp{}]\n", s.offset));
-                                    asms_main.push("\tmovzx rax, ax\n".to_string()); // Zero-extend to 64-bit
+                                    asms_main.push(format!("\tmov {}, WORD [rbp{}]\n", reg_16, s.offset));
+                                    // Zero-extend to full register size if needed
+                                    if target_reg_size > 2 {
+                                        asms_main.push(format!("\tmovzx {}, {}\n", reg_64, reg_16));
+                                    }
                                 }
                                 1 => {
-                                    asms_main.push(format!("\tmov al, BYTE [rbp{}]\n", s.offset));
-                                    asms_main.push("\tmovzx rax, al\n".to_string()); // Zero-extend to 64-bit
+                                    asms_main.push(format!("\tmov {}, BYTE [rbp{}]\n", reg_8, s.offset));
+                                    // Zero-extend to full register size if needed
+                                    if target_reg_size > 1 {
+                                        asms_main.push(format!("\tmovzx {}, {}\n", reg_64, reg_8));
+                                    }
                                 }
                                 _ => {
-                                    return Err(CompilerError::UnknownDataType);
+                                    panic!("Unsupported variable size: {} bytes for variable '{}'", s.size, value);
                                 }
                             }
                         }
                         None => {
-                            panic!("Unknown variable {:?}", *value);
+                            panic!("Unknown variable: '{}'", value);
                         }
                     }
                 }
                 AnyMetadata::String { value } => {
                     self.data_section.push(format!("\tLC_{} db {}, 0\n", self.data_counter, (*value)).to_string());
                     self.data_section.push(format!("\tLC_len_{} equ {}\n", self.data_counter, (*value).len()).to_string());
-                    asms_main.push(format!("\tlea rax, [rel LC_{}]\n", self.data_counter).to_string());
+                    asms_main.push(format!("\tlea {}, [rel LC_{}]\n", register, self.data_counter).to_string());
+                    self.data_counter += 1; // Don't forget to increment!
                 }
                 _ => unimplemented!("Only number literals supported for now"),
-            },
+            }
             Expression::Call(c) => {
                 let order = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
-                for i in 0..c.arguments.len() {
-                    let value = self.compile_expression(&c.arguments[i], order[i])?;
+                dbg!(&c);
+                (0..c.arguments.len()).for_each(|i| {
+                    println!("arg: {:?}, register: {:?}", &c.arguments[i], order[i]);
+                    let value = self.compile_expression(&c.arguments[i], order[i]).expect("WTF");
                     for v in value {
                         asms_main.push(v);
                     }
-                }
+                });
+                asms_main.push("\txor rax, rax\n".to_string());
                 asms_main.push(format!("\tcall {}\n", c.name));
             }
             _ => unimplemented!("Only number literals supported for now found: {:?}", expr),

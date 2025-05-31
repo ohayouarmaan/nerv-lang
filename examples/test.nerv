@@ -1,6 +1,9 @@
-@main() float {
-  dec x float = functionA(2 / 8);
-  return x;
+extern printf(string, int) void;
+
+@main() int {
+  dec x int = 2;
+  printf("Something %d", 2);
+  return 2;
 }
 
 @functionA(float y) float {

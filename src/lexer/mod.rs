@@ -206,6 +206,7 @@ impl<'a> Iterator for Lexer<'a> {
                         self.advance().ok()?
                     }
 
+
                     // Operators
                     '+' => return self.generate_operator(lexeme_start, TokenType::Plus),
                     '-' => return self.generate_operator(lexeme_start, TokenType::Minus),
@@ -228,6 +229,16 @@ impl<'a> Iterator for Lexer<'a> {
                         self.advance().ok()?;
                         return Some(Token {
                             token_type: TokenType::Semicolon,
+                            position: Position::new(self.current_line, self.current_column),
+                            lexeme: (lexeme_start, self.position),
+                            meta_data: AnyMetadata::None
+                        })
+                    }
+
+                    ',' => {
+                        self.advance().ok()?;
+                        return Some(Token {
+                            token_type: TokenType::Comma,
                             position: Position::new(self.current_line, self.current_column),
                             lexeme: (lexeme_start, self.position),
                             meta_data: AnyMetadata::None
@@ -290,7 +301,7 @@ impl<'a> Iterator for Lexer<'a> {
                             lexeme_start = self.position;
                             continue;
                         } else {
-                            panic!("ILLEGAL CHARACTER: {:?}:{:?}", self.current_line, self.current_column);
+                            panic!("ILLEGAL CHARACTER : {x} : {:?}:{:?}", self.current_line, self.current_column);
                         }
                     }
                 }
