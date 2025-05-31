@@ -172,7 +172,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_args(&mut self) -> Argument<'a> {
-        let matched = self.match_tokens(&[TokenType::DInteger, TokenType::DString]);
+        let matched = self.match_tokens(&[TokenType::DInteger, TokenType::DString, TokenType::DFloat]);
 
         if matched {
             let arg_type = self.previous_token.clone().expect("UNREACHABLE");

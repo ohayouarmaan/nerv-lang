@@ -97,13 +97,13 @@ impl<'a> Compiler<'a> {
                 asms_main.push("\tmov DWORD [rsp], eax\n".to_string());
             },
             TokenType::DFloat => {
-                asms_main.push("\tsub rsp, 4\n".to_string());
+                asms_main.push("\tsub rsp, 8\n".to_string());
                 self.current_stack_offset -= SIZES.d_float as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
                     offset: self.current_stack_offset,
                     size: SIZES.d_int
                 });
-                asms_main.push("\tmovq QWORD [rsp], rax\n".to_string());
+                asms_main.push("\tmov QWORD [rsp], rax\n".to_string());
             },
             TokenType::DString => {
                 asms_main.push("\tsub rsp, 8\n".to_string());
@@ -227,10 +227,10 @@ impl<'a> Compiler<'a> {
                     TokenType::Minus =>asms_main.push(format!("\tsub {}, rbx\n", register)),
                     TokenType::Star => asms_main.push(format!("\timul {}, rbx\n", register)),
                     TokenType::Slash => {
-                        asms_main.push("\tmov rdx, 0\n".to_string());
-                        asms_main.push("\tmov rcx, rax\n".to_string());
                         asms_main.push("\tmov rax, rbx\n".to_string());
-                        asms_main.push("\tdiv rcx\n".to_string());
+                        asms_main.push("\txor rdx, rdx\n".to_string());
+                        asms_main.push(format!("\tdiv {}\n", register));
+                        asms_main.push(format!("\tmov {}, rax\n", register));
                     }
                     _ => unimplemented!("Operator not implemented"),
                 }

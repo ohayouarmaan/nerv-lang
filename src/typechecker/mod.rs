@@ -150,6 +150,9 @@ impl<'a> TypeChecker<'a> {
                     (TokenType::EqualEqual, _, _) => {
                         TokenType::DInteger
                     },
+                    (TokenType::Slash, _, _) => {
+                        TokenType::DFloat
+                    },
                     _ => panic!("Type error in binary expression")
                 }
             },

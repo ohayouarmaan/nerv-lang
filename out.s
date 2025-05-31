@@ -5,9 +5,9 @@ section .text
 functionA:
 	push rbp
 	mov rbp, rsp
-	sub rsp, 4
-	mov DWORD [rbp-4], edi
-	mov eax, DWORD [rbp-4]
+	sub rsp, 8
+	mov QWORD [rbp-8], rdi
+	mov rax, QWORD [rbp-8]
 	leave
 	ret
 main:
@@ -18,14 +18,17 @@ main:
 	mov rdi, 2
 	sub rsp, 8
 	push rdi
-	mov rdi, 2
+	mov rdi, 8
 	pop rbx
 	add rsp, 8
-	add rdi, rbx
+	mov rax, rbx
+	xor rdx, rdx
+	div rdi
+	mov rdi, rax
 	call functionA
-	sub rsp, 4
-	mov DWORD [rsp], eax
+	sub rsp, 8
+	mov QWORD [rsp], rax
 
-	mov eax, DWORD [rbp-4]
+	mov eax, DWORD [rbp-8]
 	leave
 	ret

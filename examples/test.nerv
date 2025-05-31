@@ -1,8 +1,8 @@
-@main() int {
-  dec x int = functionA(2 + 2);
+@main() float {
+  dec x float = functionA(2 / 8);
   return x;
 }
 
-@functionA(int y) int {
+@functionA(float y) float {
   return y;
 }
