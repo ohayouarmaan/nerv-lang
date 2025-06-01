@@ -59,7 +59,6 @@ impl<'a> Parser<'a> {
                             if let Some(Token { token_type: TokenType::Equal, .. }) = after_data_type {
                                 let expr = self.parse_expression();
                                 self.consume(TokenType::Semicolon);
-                                dbg!(&expr, &value, &data_type);
                                 return Statement::VarDeclaration(VarDeclarationStatement {
                                     value: expr,
                                     name: value,
@@ -109,14 +108,12 @@ impl<'a> Parser<'a> {
 
                     let return_type: TypedExpression = self.parse_type_expression();
 
-                    dbg!(self.lexer.peek());
                     self.consume(TokenType::Semicolon);
                     let fx_sig = FunctionSignatureDeclaration {
                         fx_name,
                         args,
                         return_type,
                     };
-                    dbg!("new", self.lexer.peek());
                     return Statement::ExternStatement(ExternFunctionStatement {
                         fx_name,
                         fx_sig
@@ -164,10 +161,11 @@ impl<'a> Parser<'a> {
     }
 
     fn consume(&mut self, tt: TokenType) {
-        if let Some(Token { token_type, position, .. }) = self.lexer.peek() {
+        if let Some(Token { token_type, position, meta_data, .. }) = self.lexer.peek() {
             if *token_type == tt {
                 self.previous_token = self.lexer.next();
             } else {
+                dbg!(token_type, meta_data);
                 panic!("Expected a {:?} found {:?} {:?}:{:?}", tt, *token_type, position.line, position.column);
             }
         }
@@ -270,12 +268,12 @@ impl<'a> Parser<'a> {
     }
     
     fn unary(&mut self) -> Expression<'a> {
-        if self.match_tokens(&[TokenType::Bang, TokenType::Minus, TokenType::Ampersand]) {
+        if self.match_tokens(&[TokenType::Bang, TokenType::Minus, TokenType::Ampersand, TokenType::Star]) {
             let operator = self.previous_token.clone().expect("No Previous token given.");
             return Expression::Unary(UnaryExpression{
                 operator,
                 value: Box::from(self.unary())
-            })
+            });
         }
         let t = self.primary();
         t

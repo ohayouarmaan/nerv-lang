@@ -1,7 +1,7 @@
 use core::panic;
 use std::{collections::HashMap, fs::File};
 use crate::shared::{
-    compiler_defaults::SIZES, errors::CompilerError, meta::{ AnyMetadata, NumberType }, parser_nodes::{Expression, ExpressionStatement, FunctionDeclaration, LiteralExpression, Program, ReturnStatement, Statement, TypedExpression, VarDeclarationStatement, VariableReassignmentStatement}, tokens::{Token, TokenType}
+    compiler_defaults::SIZES, errors::CompilerError, meta::{ AnyMetadata, NumberType }, parser_nodes::{Expression, ExpressionStatement, FunctionDeclaration, LiteralExpression, Program, ReturnStatement, Statement, TypedExpression, UnaryExpression, VarDeclarationStatement, VariableReassignmentStatement}, tokens::{Token, TokenType}
 };
 
 pub struct Symbol {
@@ -114,7 +114,6 @@ impl<'a> Compiler<'a> {
         asms_main.extend(self.compile_expression(&stmt.value, "rax")?);
         match stmt.variable_type {
             TypedExpression::Integer => {
-                asms_main.push("\tsub rsp, 4\n".to_string());
                 self.current_stack_offset -= SIZES.d_int as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
                     offset: self.current_stack_offset,
@@ -123,7 +122,6 @@ impl<'a> Compiler<'a> {
                 asms_main.push(format!("\tmov DWORD [rbp-{}], eax\n", self.current_stack_offset.abs()));
             },
             TypedExpression::Float => {
-                asms_main.push("\tsub rsp, 8\n".to_string());
                 self.current_stack_offset -= SIZES.d_float as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
                     offset: self.current_stack_offset,
@@ -132,7 +130,6 @@ impl<'a> Compiler<'a> {
                 asms_main.push(format!("\tmov QWORD [rbp-{}], rax\n", self.current_stack_offset.abs()));
             },
             TypedExpression::String => {
-                asms_main.push("\tsub rsp, 8\n".to_string());
                 self.current_stack_offset -= SIZES.d_ptr as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
                     offset: self.current_stack_offset,
@@ -141,7 +138,6 @@ impl<'a> Compiler<'a> {
                 asms_main.push(format!("\tmov QWORD [rbp-{}], rax\n", self.current_stack_offset.abs()));
             },
             TypedExpression::Pointer(_) => {
-                asms_main.push("\tsub rsp, 8\n".to_string());
                 self.current_stack_offset -= SIZES.d_ptr as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
                     offset: self.current_stack_offset,
@@ -156,13 +152,34 @@ impl<'a> Compiler<'a> {
         asms_main.push("\n".to_string());
         Ok(asms_main)
     }
+    pub fn align_bytes(&self, bytes: usize, alignment: usize) -> usize {
+        let rem = bytes%alignment;
+        if rem > 0 {
+            bytes + alignment - rem
+        } else {
+            bytes
+        }
+    }
 
     pub fn compile_function_declaration_statement(&mut self, stmt: &FunctionDeclaration<'a>) -> Result<(String, Vec<String>), CompilerError> {
         let old_sp = self.current_stack_offset;
         self.current_stack_offset = 0;
+        let mut total_arg_size = 0;
+        for ar in stmt.arguments.clone() {
+            let arg_size = match ar.arg_type {
+                TypedExpression::Integer => SIZES.d_int,
+                TypedExpression::String => SIZES.d_ptr,
+                TypedExpression::Pointer(_) => SIZES.d_ptr,
+                TypedExpression::Void => SIZES.d_bool,
+                TypedExpression::Float => SIZES.d_float
+            };
+            
+            total_arg_size += arg_size;
+        }
         let mut body_stmts = vec![
             "\tpush rbp\n".to_string(),
             "\tmov rbp, rsp\n".to_string(),
+            format!("\tsub rsp, {}", self.align_bytes(total_arg_size, 16))
         ];
         if stmt.arity > 0 {
             let order = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
@@ -174,7 +191,6 @@ impl<'a> Compiler<'a> {
                     TypedExpression::String => (8, "QWORD", order[i]),
                     _ => unimplemented!("Can not determine size of other things.")
                 };
-                body_stmts.push(format!("\tsub rsp, {}\n", size));
                 self.current_stack_offset -= size as isize;
                 body_stmts.push(format!("\tmov {} [rbp-{}], {}\n", operand_size, self.current_stack_offset.abs(), register));
                 self.symbol_table.insert(stmt.arguments[i].name, Symbol {
@@ -264,10 +280,58 @@ impl<'a> Compiler<'a> {
 
     fn compile_address(&mut self, expr: &Expression<'a>, register: &'a str) -> Result<Vec<String>, CompilerError> {
         match expr {
-            Expression::Literal(LiteralExpression { value: Token { meta_data: AnyMetadata::Identifier { value: name }, .. }, .. }) => {
+            Expression::Literal(LiteralExpression {
+                value: Token {
+                    meta_data: AnyMetadata::Identifier { value: name },
+                    ..
+                },
+                ..
+            }) => {
                 self.emit_address_of_variable(name, register)
             },
-            _ => Err(CompilerError::InvalidLValue)
+            Expression::Unary(UnaryExpression{ operator, value }) => {
+                match operator.token_type {
+                    TokenType::Ampersand => {
+                        let mut result = self.compile_address(value, register)?;
+                        result.push(format!("mov {}, [{}]", register, register));
+                        Ok(result)
+                    }
+                    _ => unimplemented!()
+                }
+            }
+            _ => unimplemented!()
+        }
+    }
+
+    fn compile_deref(&mut self, expr: &Expression<'a>, register: &'a str) -> Result<Vec<String>, CompilerError> {
+        match expr {
+            Expression::Literal(LiteralExpression {
+                value: Token {
+                    meta_data: AnyMetadata::Identifier{..},
+                    ..
+                },
+                ..
+            }) => {
+                let mut res = self.compile_expression(expr, register)?;
+                res.push(format!("\tmov {}, [{}]\n", register, register));
+                Ok(res)
+            },
+            Expression::Unary(UnaryExpression{ operator, value }) => {
+                match operator.token_type {
+                    TokenType::Ampersand => {
+                        let mut result = self.compile_address(value, register)?;
+                        result.push(format!("mov {}, [{}]", register, register));
+                        Ok(result)
+                    }
+                    TokenType::Star => {
+                        let mut res = self.compile_expression(expr, register)?;
+                        res.push(format!("\tmov {}, [{}]\n", register, register));
+                        Ok(res)
+                    }
+                    _ => unimplemented!()
+                }
+            }
+            _ => unimplemented!()
         }
     }
 
@@ -282,7 +346,6 @@ impl<'a> Compiler<'a> {
                     }
                 }
 
-                asms_main.push("\tsub rsp, 8\n".to_string());
                 asms_main.push(format!("\tpush {}\n", register));
 
                 if let Ok(compiled_asms) = self.compile_expression(&bin.right, register) {
@@ -395,6 +458,17 @@ impl<'a> Compiler<'a> {
                 asms_main.push("\txor rax, rax\n".to_string());
                 asms_main.push(format!("\tcall {}\n", c.name));
                 asms_main.push(format!("\tmov {}, rax\n", register));
+            }
+            Expression::Unary(u) => {
+                match u.operator.token_type {
+                    TokenType::Ampersand => {
+                        return self.compile_address(&u.value, register)
+                    }
+                    TokenType::Star => {
+                        return self.compile_deref(&u.value, register)
+                    }
+                    _ => unimplemented!()
+                }
             }
             _ => unimplemented!("Only number literals supported for now found: {:?}", expr),
         }

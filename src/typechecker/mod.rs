@@ -179,7 +179,22 @@ impl<'a> TypeChecker<'a> {
                     _ => panic!("Type error in binary expression")
                 }
             },
-            Expression::Unary(_) => TypedExpression::Integer,
+            Expression::Unary(u) => {
+                match u.operator.token_type {
+                    TokenType::Ampersand => {
+                        let x = self.eval_expression(&u.value);
+                        TypedExpression::Pointer(Box::new(x))
+                    }
+                    TokenType::Star => {
+                        if let TypedExpression::Pointer(x) = self.eval_expression(&u.value) {
+                            *x
+                        } else {
+                            panic!("You're trying to deref a {:?} type", self.eval_expression(&u.value));
+                        }
+                    }
+                    _ => unimplemented!()
+                }
+            },
             Expression::Call(c) => {
                 if let Some((result, args)) = self.env.functions.get(c.name) {
                     (0..c.arguments.len()).for_each(|i| {
