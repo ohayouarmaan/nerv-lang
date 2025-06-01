@@ -55,7 +55,6 @@ impl<'a> Parser<'a> {
                         if let AnyMetadata::Identifier{ value } = t.meta_data {
                             let data_type = self.parse_type_expression();
                             let after_data_type = self.lexer.next();
-                            println!("WE'RE HERE: {:?}", data_type);
                             if let Some(Token { token_type: TokenType::Equal, .. }) = after_data_type {
                                 let expr = self.parse_expression();
                                 self.consume(TokenType::Semicolon);
@@ -156,7 +155,9 @@ impl<'a> Parser<'a> {
                 let pointer_to = self.parse_type_expression();
                 TypedExpression::Pointer(Box::new(pointer_to))
             }
-            _ => panic!("Invalid type {:?} at {}:{}", current_token.token_type, current_token.position.line, current_token.position.column)
+            _ => {
+                panic!("Invalid type {:?} at {}:{}", current_token, current_token.position.line, current_token.position.column);
+            }
         }
     }
 
@@ -185,6 +186,7 @@ impl<'a> Parser<'a> {
         } else {
             panic!("Expected function name identifier");
         };
+        println!("name: {:?}", name);
 
         self.consume(TokenType::LeftParen);
         let mut args = Vec::new();
@@ -196,6 +198,11 @@ impl<'a> Parser<'a> {
         let return_type = self.parse_type_expression();
 
         let body = self.parse_block_statement();
+        let var_size: usize =if let Statement::BlockStatement(bs) = &body {
+            self.calculate_variables_size(bs)
+        } else {
+            unreachable!()
+        };
 
         if let Statement::BlockStatement(body) = body {
             Statement::FunctionDeclaration(FunctionDeclaration {
@@ -204,7 +211,8 @@ impl<'a> Parser<'a> {
                 arguments: args,
                 body,
                 return_type,
-                position: starting_position
+                position: starting_position,
+                variable_size: var_size
             })
         } else {
             panic!("UNREACHABLE");
@@ -230,6 +238,8 @@ impl<'a> Parser<'a> {
         if self.match_tokens(&[TokenType::Identifier]) {
             let prev = self.previous_token.clone().expect("UNREACHABLE");
             if let AnyMetadata::Identifier { value: name } = &prev.meta_data {
+                let _ = self.match_tokens(&[TokenType::Comma]);
+                dbg!(&name, &arg_type);
                 Argument {
                     name,
                     arg_type
@@ -240,6 +250,23 @@ impl<'a> Parser<'a> {
         } else {
             panic!("Expected an Identifier {}:{}", previous_token.position.line, previous_token.position.column);
         }
+
+    }
+
+    pub fn calculate_variables_size(&self, bs: &BlockStatement<'a>) -> usize {
+        let mut size = 8;
+        for stmt in &bs.values {
+            if let Statement::VarDeclaration(VarDeclarationStatement { variable_type, .. }) = stmt {
+                size += match variable_type {
+                    TypedExpression::Integer => 4,
+                    TypedExpression::String => 8,
+                    TypedExpression::Float => 8,
+                    TypedExpression::Void => 1,
+                    TypedExpression::Pointer(_) => 8,
+                }
+            }
+        }
+        size
     }
 
     fn parse_expression(&mut self) -> Expression<'a> {

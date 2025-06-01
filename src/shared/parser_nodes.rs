@@ -87,7 +87,8 @@ pub struct FunctionDeclaration<'a> {
     pub arguments: Vec<Argument<'a>>,
     pub body: BlockStatement<'a>,
     pub return_type: TypedExpression,
-    pub position: Position
+    pub position: Position,
+    pub variable_size: usize
 }
 
 #[allow(dead_code)]

@@ -4,7 +4,10 @@ extern malloc(int) &int;
 @main() int {
   dec v int = 9;
   dec x &int = &v;
-  dec t &&int = &x;
-  printf("value for int: %d", **t);
+  printPointer(x, 2);
   return 0;
+}
+
+@printPointer(&int x, int wow) void {
+  printf("Pointer %d", *x);
 }

@@ -176,10 +176,13 @@ impl<'a> Compiler<'a> {
             
             total_arg_size += arg_size;
         }
+
+        total_arg_size += stmt.variable_size;
+
         let mut body_stmts = vec![
             "\tpush rbp\n".to_string(),
             "\tmov rbp, rsp\n".to_string(),
-            format!("\tsub rsp, {}", self.align_bytes(total_arg_size, 16))
+            format!("\tsub rsp, {}\n", self.align_bytes(total_arg_size, 16))
         ];
         if stmt.arity > 0 {
             let order = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
@@ -189,6 +192,7 @@ impl<'a> Compiler<'a> {
                     TypedExpression::Integer => (4, "DWORD", order_32_bit[i]),
                     TypedExpression::Float => (8, "QWORD", order[i]),
                     TypedExpression::String => (8, "QWORD", order[i]),
+                    TypedExpression::Pointer(_) => (8, "QWORD", order[i]),
                     _ => unimplemented!("Can not determine size of other things.")
                 };
                 self.current_stack_offset -= size as isize;
