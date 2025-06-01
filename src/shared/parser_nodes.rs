@@ -76,7 +76,7 @@ pub struct VariableReassignmentStatement<'a> {
 #[derive(Debug, Clone)]
 pub struct Argument<'a> {
     pub name: &'a str,
-    pub arg_type: TokenType
+    pub arg_type: TypedExpression
 }
 
 #[allow(dead_code)]
@@ -86,7 +86,7 @@ pub struct FunctionDeclaration<'a> {
     pub arity: usize,
     pub arguments: Vec<Argument<'a>>,
     pub body: BlockStatement<'a>,
-    pub return_type: TokenType,
+    pub return_type: TypedExpression,
     pub position: Position
 }
 
@@ -95,7 +95,7 @@ pub struct FunctionDeclaration<'a> {
 pub struct VarDeclarationStatement<'a> {
     pub name: &'a str,
     pub value: Expression<'a>,
-    pub variable_type: TokenType,
+    pub variable_type: TypedExpression,
     pub position: Position
 }
 
@@ -123,8 +123,8 @@ pub struct ReturnStatement<'a> {
 #[derive(Debug, Clone)]
 pub struct FunctionSignatureDeclaration<'a> {
     pub fx_name: &'a str,
-    pub args: Vec<TokenType>,
-    pub return_type: TokenType
+    pub args: Vec<TypedExpression>,
+    pub return_type: TypedExpression
 }
 
 #[derive(Debug, Clone)]
@@ -132,4 +132,14 @@ pub struct ExternFunctionStatement<'a> {
     pub fx_name: &'a str,
     pub fx_sig: FunctionSignatureDeclaration<'a> 
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypedExpression {
+    Integer,
+    String,
+    Float,
+    Void,
+    Pointer(Box<TypedExpression>)
+}
+
 

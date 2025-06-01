@@ -2,7 +2,7 @@ use crate::{
     lexer::Lexer,
     shared::{
         meta::AnyMetadata, parser_nodes::{
-            Argument, BinaryExpression, BlockStatement, CallExpression, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, FunctionSignatureDeclaration, LiteralExpression, Program, ReturnStatement, Statement, UnaryExpression, VarDeclarationStatement, VariableReassignmentStatement
+            Argument, BinaryExpression, BlockStatement, CallExpression, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, FunctionSignatureDeclaration, LiteralExpression, Program, ReturnStatement, Statement, TypedExpression, UnaryExpression, VarDeclarationStatement, VariableReassignmentStatement
         }, positions::Position, tokens::{
             Token,
             TokenType
@@ -53,13 +53,7 @@ impl<'a> Parser<'a> {
                             panic!("Expected a Identifier after 'dec' {:?}", self.previous_token);
                         }
                         if let AnyMetadata::Identifier{ value } = t.meta_data {
-                            let data_type: TokenType;
-                            let c_token = self.lexer.next();
-                            if let Some(Token { token_type, .. }) = c_token {
-                                data_type = token_type;
-                            } else {
-                                panic!("Invalid data type. {:?}", c_token);
-                            } 
+                            let data_type = self.parse_type_expression();
                             let after_data_type = self.lexer.next();
                             println!("WE'RE HERE: {:?}", data_type);
                             if let Some(Token { token_type: TokenType::Equal, .. }) = after_data_type {
@@ -105,25 +99,15 @@ impl<'a> Parser<'a> {
                     };
 
                     self.consume(TokenType::LeftParen);
-                    let mut args: Vec<TokenType> = vec![];
+                    let mut args: Vec<TypedExpression> = vec![];
                     while !self.match_tokens(&[TokenType::RightParen]) {
-                        if self.match_tokens(&[TokenType::DFloat, TokenType::DInteger, TokenType::DString, TokenType::DVoid]){
-                            args.push(self.previous_token.clone().unwrap().token_type);
-                        }
+                        args.push(self.parse_type_expression());
                         if self.match_tokens(&[TokenType::Comma]) {
                             continue;
                         }
                     }
 
-                    let return_type: TokenType = if self.match_tokens(&[TokenType::DString, TokenType::DInteger, TokenType::DFloat, TokenType::DVoid]) {
-                        if let Some(prev) = &self.previous_token {
-                            prev.token_type
-                        } else {
-                            panic!("UNREACHABLE");
-                        }
-                    } else {
-                        panic!("Invalid Return Type ({:?}) for extern Statement: {}:{}", self.lexer.peek(),self.previous_token.clone().unwrap().position.line, self.previous_token.clone().unwrap().position.column);
-                    };
+                    let return_type: TypedExpression = self.parse_type_expression();
 
                     dbg!(self.lexer.peek());
                     self.consume(TokenType::Semicolon);
@@ -164,6 +148,21 @@ impl<'a> Parser<'a> {
         panic!("UNREACHABLE");
     }
 
+    fn parse_type_expression(&mut self) -> TypedExpression {
+        let current_token = self.lexer.next().unwrap();
+        match current_token.token_type {
+            TokenType::DInteger => TypedExpression::Integer,
+            TokenType::DFloat => TypedExpression::Float,
+            TokenType::DString => TypedExpression::String,
+            TokenType::DVoid => TypedExpression::Void,
+            TokenType::Ampersand => {
+                let pointer_to = self.parse_type_expression();
+                TypedExpression::Pointer(Box::new(pointer_to))
+            }
+            _ => panic!("Invalid type {:?} at {}:{}", current_token.token_type, current_token.position.line, current_token.position.column)
+        }
+    }
+
     fn consume(&mut self, tt: TokenType) {
         if let Some(Token { token_type, position, .. }) = self.lexer.peek() {
             if *token_type == tt {
@@ -196,12 +195,7 @@ impl<'a> Parser<'a> {
             args.push(self.parse_args());
         }
 
-        let return_type: TokenType = if self.match_tokens(&[TokenType::DInteger, TokenType::DString, TokenType::DFloat, TokenType::DVoid]) {
-            self.previous_token.clone().unwrap().token_type
-        } else {
-            let error_position = self.lexer.peek().unwrap().position.clone();
-            panic!("Unknown return type: {}:{}", error_position.line, error_position.column);
-        };
+        let return_type = self.parse_type_expression();
 
         let body = self.parse_block_statement();
 
@@ -232,26 +226,21 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_args(&mut self) -> Argument<'a> {
-        let matched = self.match_tokens(&[TokenType::DInteger, TokenType::DString, TokenType::DFloat]);
+        let arg_type = self.parse_type_expression();
+        let previous_token = self.previous_token.clone().expect("UNREACHABLE");
 
-        if matched {
-            let arg_type = self.previous_token.clone().expect("UNREACHABLE");
-
-            if self.match_tokens(&[TokenType::Identifier]) {
-                let prev = self.previous_token.clone().expect("UNREACHABLE");
-                if let AnyMetadata::Identifier { value: name } = &prev.meta_data {
-                    Argument {
-                        name,
-                        arg_type: arg_type.token_type,
-                    }
-                } else {
-                    panic!("Expected identifier metadata");
+        if self.match_tokens(&[TokenType::Identifier]) {
+            let prev = self.previous_token.clone().expect("UNREACHABLE");
+            if let AnyMetadata::Identifier { value: name } = &prev.meta_data {
+                Argument {
+                    name,
+                    arg_type
                 }
             } else {
-                panic!();
+                panic!("Expected identifier metadata");
             }
         } else {
-            panic!();
+            panic!("Expected an Identifier {}:{}", previous_token.position.line, previous_token.position.column);
         }
     }
 
@@ -281,7 +270,7 @@ impl<'a> Parser<'a> {
     }
     
     fn unary(&mut self) -> Expression<'a> {
-        if self.match_tokens(&[TokenType::Bang, TokenType::Minus]) {
+        if self.match_tokens(&[TokenType::Bang, TokenType::Minus, TokenType::Ampersand]) {
             let operator = self.previous_token.clone().expect("No Previous token given.");
             return Expression::Unary(UnaryExpression{
                 operator,

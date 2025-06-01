@@ -214,6 +214,7 @@ impl<'a> Iterator for Lexer<'a> {
                     '/' => return self.generate_operator(lexeme_start, TokenType::Slash),
                     '*' => return self.generate_operator(lexeme_start, TokenType::Star),
                     '@' => return self.generate_operator(lexeme_start, TokenType::At),
+                    '&' => return self.generate_operator(lexeme_start, TokenType::Ampersand),
                     '#' => return self.generate_operator(lexeme_start, TokenType::Pound),
 
                     // Words

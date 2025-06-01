@@ -1,6 +1,10 @@
+extern printf(string, &int) int;
+extern malloc(int) &int;
+
 @main() int {
-  dec x int = 4;
-  x = 2;
-  x = 7;
-  return x;
+  dec v &int = malloc(4);
+  printf("Pointer for int: %p", v);
+  v = malloc(14);
+  printf("Pointer for int: %p", v);
+  return 0;
 }

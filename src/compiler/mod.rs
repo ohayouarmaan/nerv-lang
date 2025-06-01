@@ -1,7 +1,7 @@
 use core::panic;
 use std::{collections::HashMap, fs::File};
 use crate::shared::{
-    compiler_defaults::SIZES, errors::CompilerError, meta::{ AnyMetadata, NumberType }, parser_nodes::{Expression, ExpressionStatement, FunctionDeclaration, LiteralExpression, Program, ReturnStatement, Statement, VarDeclarationStatement, VariableReassignmentStatement}, tokens::{Token, TokenType}
+    compiler_defaults::SIZES, errors::CompilerError, meta::{ AnyMetadata, NumberType }, parser_nodes::{Expression, ExpressionStatement, FunctionDeclaration, LiteralExpression, Program, ReturnStatement, Statement, TypedExpression, VarDeclarationStatement, VariableReassignmentStatement}, tokens::{Token, TokenType}
 };
 
 pub struct Symbol {
@@ -86,9 +86,9 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn compile_variable_reassignment_statement(&mut self, stmt: &VariableReassignmentStatement<'a>) -> Result<Vec<String>, CompilerError> {
-        let compiled_lhs = self.compile_address(&stmt.lhs, "rax");
-        let compiled_rhs = self.compile_expression(&stmt.rhs, "rbx");
-        let mut asms_main = vec![];
+        let compiled_lhs = self.compile_address(&stmt.lhs, "rbx");
+        let compiled_rhs = self.compile_expression(&stmt.rhs, "rdx");
+        let mut asms_main = vec!["\n\t; VARIABLE REASSIGNMENT".to_string()];
         if let Ok(compiled_lhs) =  compiled_lhs {
             for lhs_asm in compiled_lhs {
                 asms_main.push(lhs_asm);
@@ -98,7 +98,7 @@ impl<'a> Compiler<'a> {
                 for rhs_asm in compiled_rhs {
                     asms_main.push(rhs_asm);
                 }
-                asms_main.push("\tmov [rax], rbx\n".to_string());
+                asms_main.push("\tmov [rbx], rdx\n".to_string());
                 Ok(asms_main)
             } else {
                 panic!("{:?}", compiled_rhs);
@@ -107,37 +107,47 @@ impl<'a> Compiler<'a> {
             panic!("{:?}", compiled_lhs);
         }
     }
+    
 
     pub fn compile_variable_declaration_statement(&mut self, stmt: &VarDeclarationStatement<'a>) -> Result<Vec<String>, CompilerError> {
         let mut asms_main = vec!["\n\t; VARIABLE DECLARATION\n".to_string()];
         asms_main.extend(self.compile_expression(&stmt.value, "rax")?);
         match stmt.variable_type {
-            TokenType::DInteger => {
+            TypedExpression::Integer => {
                 asms_main.push("\tsub rsp, 4\n".to_string());
                 self.current_stack_offset -= SIZES.d_int as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
                     offset: self.current_stack_offset,
                     size: SIZES.d_int
                 });
-                asms_main.push("\tmov DWORD [rsp], eax\n".to_string());
+                asms_main.push(format!("\tmov DWORD [rbp-{}], eax\n", self.current_stack_offset.abs()));
             },
-            TokenType::DFloat => {
+            TypedExpression::Float => {
                 asms_main.push("\tsub rsp, 8\n".to_string());
                 self.current_stack_offset -= SIZES.d_float as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
                     offset: self.current_stack_offset,
                     size: SIZES.d_int
                 });
-                asms_main.push("\tmov QWORD [rsp], rax\n".to_string());
+                asms_main.push(format!("\tmov QWORD [rbp-{}], rax\n", self.current_stack_offset.abs()));
             },
-            TokenType::DString => {
+            TypedExpression::String => {
                 asms_main.push("\tsub rsp, 8\n".to_string());
                 self.current_stack_offset -= SIZES.d_ptr as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
                     offset: self.current_stack_offset,
                     size: SIZES.d_ptr
                 });
-                asms_main.push("\tmov QWORD [rsp], rax\n".to_string());
+                asms_main.push(format!("\tmov QWORD [rbp-{}], rax\n", self.current_stack_offset.abs()));
+            },
+            TypedExpression::Pointer(_) => {
+                asms_main.push("\tsub rsp, 8\n".to_string());
+                self.current_stack_offset -= SIZES.d_ptr as isize;
+                self.symbol_table.insert(stmt.name, Symbol {
+                    offset: self.current_stack_offset,
+                    size: SIZES.d_ptr
+                });
+                asms_main.push(format!("\tmov QWORD [rbp-{}], rax\n", self.current_stack_offset.abs()));
             },
             _ => {
                 return Err(CompilerError::UnknownDataType);
@@ -159,9 +169,9 @@ impl<'a> Compiler<'a> {
             let order_32_bit = ["edi", "esi", "edx", "ecx", "e8", "e9"];
             (0..stmt.arity).for_each(|i| {
                 let (size, operand_size, register): (usize, &'a str, &'a str) = match stmt.arguments[i].arg_type {
-                    TokenType::DInteger => (4, "DWORD", order_32_bit[i]),
-                    TokenType::DFloat => (8, "QWORD", order[i]),
-                    TokenType::DString => (8, "QWORD", order[i]),
+                    TypedExpression::Integer => (4, "DWORD", order_32_bit[i]),
+                    TypedExpression::Float => (8, "QWORD", order[i]),
+                    TypedExpression::String => (8, "QWORD", order[i]),
                     _ => unimplemented!("Can not determine size of other things.")
                 };
                 body_stmts.push(format!("\tsub rsp, {}\n", size));
@@ -185,6 +195,7 @@ impl<'a> Compiler<'a> {
                     body_stmts.push(compiled_stmt);
                 }
             } else {
+                println!("{:?}", body_statement);
                 panic!("{:?}", compiled);
             }
         }
@@ -205,6 +216,7 @@ impl<'a> Compiler<'a> {
         let x = &ret.value;
         let mut main_asm_for_return = vec![];
         if let Ok(compiled_literal) = self.compile_expression(x, "rax") {
+            main_asm_for_return.push("\n\t; Return Statement\n".to_string());
             for v in compiled_literal {
                 main_asm_for_return.push(v);
             }
@@ -247,15 +259,15 @@ impl<'a> Compiler<'a> {
 
     fn emit_address_of_variable(&mut self, var_name: &str, target_register: &str) -> Result<Vec<String>, CompilerError> {
         let s = self.symbol_table.get(var_name).unwrap();
-        return Ok(vec![format!("\tlea {}, [rbp{}]\n", target_register, s.offset)]);
+        Ok(vec![format!("\n\tlea {}, [rbp{}]\n", target_register, s.offset)])
     }
 
     fn compile_address(&mut self, expr: &Expression<'a>, register: &'a str) -> Result<Vec<String>, CompilerError> {
         match expr {
             Expression::Literal(LiteralExpression { value: Token { meta_data: AnyMetadata::Identifier { value: name }, .. }, .. }) => {
-                return self.emit_address_of_variable(name, register);
+                self.emit_address_of_variable(name, register)
             },
-            _ => return Err(CompilerError::InvalidLValue)
+            _ => Err(CompilerError::InvalidLValue)
         }
     }
 
@@ -382,6 +394,7 @@ impl<'a> Compiler<'a> {
                 });
                 asms_main.push("\txor rax, rax\n".to_string());
                 asms_main.push(format!("\tcall {}\n", c.name));
+                asms_main.push(format!("\tmov {}, rax\n", register));
             }
             _ => unimplemented!("Only number literals supported for now found: {:?}", expr),
         }

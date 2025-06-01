@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::shared::{
     meta::AnyMetadata, parser_nodes::{
-        BlockStatement, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, Program, ReturnStatement, Statement, VarDeclarationStatement, VariableReassignmentStatement
+        BlockStatement, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, Program, ReturnStatement, Statement, TypedExpression, VarDeclarationStatement, VariableReassignmentStatement
     }, tokens::TokenType
 };
 
@@ -26,9 +26,9 @@ pub enum Declaration<'a> {
 
 #[derive(Debug, Clone)]
 pub struct TypeEnv {
-    return_type: Option<TokenType>,
-    vars: HashMap<String, TokenType>,
-    functions: HashMap<String, (TokenType, Vec<TokenType>)>
+    return_type: Option<TypedExpression>,
+    vars: HashMap<String, TypedExpression>,
+    functions: HashMap<String, (TypedExpression, Vec<TypedExpression>)>
 }
 
 impl<'a> TypeChecker<'a> {
@@ -79,14 +79,14 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn type_check_extern_statement(&mut self, ex: ExternFunctionStatement<'a>)  {
-        let return_type = ex.fx_sig.return_type;
-        self.env.return_type = Some(return_type);
 
         let mut args = vec![];
         for param in &ex.fx_sig.args {
-            args.push(*param);
+            args.push(param.clone());
         }
-        
+
+        let return_type = ex.fx_sig.return_type;
+        self.env.return_type = Some(return_type.clone());
         self.env.functions.insert(ex.fx_sig.fx_name.to_string(), (return_type, args));
 
     }
@@ -105,10 +105,10 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn type_check_return_statement(&self, r: ReturnStatement<'a>) {
-        let expected_return_type = self.env.return_type;
+        let expected_return_type = self.env.return_type.clone().unwrap();
         let expr_type = self.eval_expression(&r.value);
 
-        if Some(expr_type) != expected_return_type {
+        if expr_type != expected_return_type {
             panic!(
                 "Return type mismatch: expected {:?}, got {:?} {}:{}",
                 expected_return_type, expr_type, r.position.line, r.position.column
@@ -137,14 +137,14 @@ impl<'a> TypeChecker<'a> {
     pub fn type_check_function(&mut self, fx: FunctionDeclaration<'a>) {
         let return_type = fx.return_type;
         let old_env = self.env.clone();
-        self.env.return_type = Some(return_type);
+        self.env.return_type = Some(return_type.clone());
 
         let mut args = vec![];
         for param in &fx.arguments {
-            args.push(param.arg_type);
+            args.push(param.arg_type.clone());
             self.env
                 .vars
-                .insert(param.name.to_string(), param.arg_type);
+                .insert(param.name.to_string(), param.arg_type.clone());
         }
         
         self.type_check_block_statement(fx.body);
@@ -152,34 +152,34 @@ impl<'a> TypeChecker<'a> {
         self.env.functions.insert(fx.name.to_string(), (return_type, args));
     }
 
-    fn eval_expression(&self, expr: &Expression<'a>) -> TokenType {
+    fn eval_expression(&self, expr: &Expression<'a>) -> TypedExpression {
         match expr {
             Expression::Binary(binary_expression) => {
                 let lhs = self.eval_expression(&binary_expression.left);
                 let rhs = self.eval_expression(&binary_expression.right);
                 match (binary_expression.operator.token_type, lhs, rhs) {
-                    (TokenType::Plus | TokenType::Minus | TokenType::Star, TokenType::DInteger, TokenType::DInteger) => {
-                        TokenType::DInteger
+                    (TokenType::Plus | TokenType::Minus | TokenType::Star, TypedExpression::Integer, TypedExpression::Integer) => {
+                        TypedExpression::Integer
                     },
-                    (TokenType::Plus | TokenType::Minus | TokenType::Star, TokenType::DInteger, TokenType::DFloat) => {
-                        TokenType::DFloat
+                    (TokenType::Plus | TokenType::Minus | TokenType::Star, TypedExpression::Integer, TypedExpression::Float) => {
+                        TypedExpression::Float
                     },
-                    (TokenType::Plus | TokenType::Minus | TokenType::Star, TokenType::DFloat, TokenType::DInteger) => {
-                        TokenType::DFloat
+                    (TokenType::Plus | TokenType::Minus | TokenType::Star, TypedExpression::Float, TypedExpression::Integer) => {
+                        TypedExpression::Float
                     },
-                    (TokenType::Plus | TokenType::Minus | TokenType::Star, TokenType::DFloat, TokenType::DFloat) => {
-                        TokenType::DFloat
+                    (TokenType::Plus | TokenType::Minus | TokenType::Star, TypedExpression::Float, TypedExpression::Float) => {
+                        TypedExpression::Float
                     },
                     (TokenType::EqualEqual, _, _) => {
-                        TokenType::DInteger
+                        TypedExpression::Float
                     },
                     (TokenType::Slash, _, _) => {
-                        TokenType::DFloat
+                        TypedExpression::Float
                     },
                     _ => panic!("Type error in binary expression")
                 }
             },
-            Expression::Unary(_) => TokenType::DInteger,
+            Expression::Unary(_) => TypedExpression::Integer,
             Expression::Call(c) => {
                 if let Some((result, args)) = self.env.functions.get(c.name) {
                     (0..c.arguments.len()).for_each(|i| {
@@ -189,21 +189,21 @@ impl<'a> TypeChecker<'a> {
                             panic!("Expected argument type to be {:?} instead got {:?} {}:{}", args[i], arg_type, c.position.line, c.position.column);
                         }
                     });
-                    *result
+                    result.clone()
                 } else {
                     panic!("No such function exists.");
                 }
             },
             Expression::Literal(literal_expression) => {
                 match literal_expression.value.token_type {
-                    TokenType::Integer => TokenType::DInteger,
-                    TokenType::String => TokenType::DString,
-                    TokenType::Float => TokenType::DFloat,
-                    TokenType::Void => TokenType::DVoid,
+                    TokenType::Integer => TypedExpression::Integer,
+                    TokenType::String => TypedExpression::String,
+                    TokenType::Float => TypedExpression::Float,
+                    TokenType::Void => TypedExpression::Void,
                     TokenType::Identifier => {
                         if let AnyMetadata::Identifier { value } = literal_expression.value.meta_data {
                             if let Some(variable_type) = self.env.vars.get(value) {
-                                *variable_type
+                                variable_type.clone()
                             } else {
                                 panic!("Unknown Variable {}:{}", literal_expression.value.position.line, literal_expression.value.position.column);
                             }

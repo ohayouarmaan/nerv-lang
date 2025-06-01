@@ -16,6 +16,7 @@ pub enum TokenType {
     Slash,
     Star,
     At,
+    Ampersand,
     Pound,
 
     // One or two character tokens.
