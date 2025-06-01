@@ -2,12 +2,8 @@ extern printf(string, int) int;
 extern malloc(int) &int;
 
 @main() int {
-  dec v int = 9;
-  dec x &int = &v;
-  printPointer(x, 2);
+  dec s &int = malloc(4);
+  *s = 4;
+  printf("Value of s: %d", *s);
   return 0;
-}
-
-@printPointer(&int x, int wow) void {
-  printf("Pointer %d", *x);
 }

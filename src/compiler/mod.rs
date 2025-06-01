@@ -297,10 +297,14 @@ impl<'a> Compiler<'a> {
                 match operator.token_type {
                     TokenType::Ampersand => {
                         let mut result = self.compile_address(value, register)?;
-                        result.push(format!("mov {}, [{}]", register, register));
+                        result.push(format!("\tmov {}, [{}]\n", register, register));
                         Ok(result)
                     }
-                    _ => unimplemented!()
+                    t => {
+                        let mut result = self.compile_address(value, register)?;
+                        result.push(format!("\tmov {}, [{}]\n", register, register));
+                        Ok(result)
+                    }
                 }
             }
             _ => unimplemented!()
