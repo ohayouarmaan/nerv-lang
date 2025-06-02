@@ -11,15 +11,8 @@ pub enum Expression<'a> {
 
 impl Expression<'_> {
     pub fn is_lvalue(&self) -> bool {
-        match self {
-            Self::Literal(LiteralExpression{ value: Token{ meta_data: AnyMetadata::Identifier{..}, .. }, .. }) => {
-                true
-            }
-            Self::Unary(UnaryExpression { operator: Token { token_type: TokenType::Star, ..}, .. }) => {
-                true
-            }
-            _ => false
-        }
+        matches!(self, Self::Literal(LiteralExpression{ value: Token{ meta_data: AnyMetadata::Identifier{..}, .. }, .. }) 
+                | Self::Unary(UnaryExpression { operator: Token { token_type: TokenType::Star, ..}, .. }))
     }
 }
 

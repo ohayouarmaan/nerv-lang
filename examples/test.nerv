@@ -4,6 +4,10 @@ extern malloc(int) &int;
 @main() int {
   dec s &int = malloc(4);
   *s = 4;
-  printf("Value of s: %d", *s);
+  dec v int = *s;
+  dec t int = *s;
+  dec x int = *s;
+  v = v + 2 * 8 + 2 * 7 + t * x;
+  printf("Value of s: %d", v + 2);
   return 0;
 }

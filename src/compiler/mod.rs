@@ -362,14 +362,13 @@ impl<'a> Compiler<'a> {
                     }
                 }
 
-                asms_main.push("\tpop rbx\n".to_string());
-                asms_main.push("\tadd rsp, 8\n".to_string());
+                asms_main.push("\tpop rcx\n".to_string());
                 match bin.operator.token_type {
-                    TokenType::Plus => asms_main.push(format!("\tadd {}, rbx\n", register)),
-                    TokenType::Minus =>asms_main.push(format!("\tsub {}, rbx\n", register)),
-                    TokenType::Star => asms_main.push(format!("\timul {}, rbx\n", register)),
+                    TokenType::Plus => asms_main.push(format!("\tadd {}, rcx\n", register)),
+                    TokenType::Minus =>asms_main.push(format!("\tsub {}, rcx\n", register)),
+                    TokenType::Star => asms_main.push(format!("\timul {}, rcx\n", register)),
                     TokenType::Slash => {
-                        asms_main.push("\tmov rax, rbx\n".to_string());
+                        asms_main.push("\tmov rax, rcx\n".to_string());
                         asms_main.push("\txor rdx, rdx\n".to_string());
                         asms_main.push(format!("\tdiv {}\n", register));
                         asms_main.push(format!("\tmov {}, rax\n", register));
