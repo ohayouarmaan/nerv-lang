@@ -1,16 +1,21 @@
 NASM_FORMAT := $(shell ./nasm_format.sh)
 
-all: build/out
+.PHONY: all build run assemble link clean
 
-build/out.s:
+all: build run assemble link
+
+build:
+	mkdir -p build
+
+run:
 	cargo run -- examples/test.nerv build/out.s
 
-build/out.o: build/out.s
+assemble:
 	nasm -f $(NASM_FORMAT) build/out.s -o build/out.o
 
-build/out: build/out.o
+link:
 	gcc build/out.o -o build/out
 	rm build/out.o
 
 clean:
-	rm -f build/out build/out.o
+	rm -f build/out build/out.o build/out.s

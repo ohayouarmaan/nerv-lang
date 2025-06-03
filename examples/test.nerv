@@ -2,12 +2,20 @@ extern printf(string, int) int;
 extern malloc(int) &int;
 
 @main() int {
-  dec s &int = malloc(4);
-  *s = 4;
-  dec v int = *s;
-  dec t int = *s;
-  dec x int = *s;
-  v = v + 2 * 8 + 2 * 7 + t * x;
-  printf("Value of s: %d", v + 2);
+  dec validPointer &int = returnsPointerToAHeapAllocatedInt();
+  dec danglingPointer &int = returnsPointerToAStackVariable();
+  printf("Value of valid pointer: %d", *validPointer);
+  printf("Value of dangling pointer: %d", *danglingPointer);
   return 0;
+}
+
+@returnsPointerToAStackVariable() &int {
+  dec a int = 4;
+  return &a;
+}
+
+@returnsPointerToAHeapAllocatedInt(int initialValue) &int {
+  dec x &int = malloc(4);
+  *x = 45;
+  return x;
 }
