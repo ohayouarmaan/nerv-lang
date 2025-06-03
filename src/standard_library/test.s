@@ -1,33 +1,22 @@
-	.file	"test.c"
-	.text
-	.globl	main
-	.type	main, @function
-main:
-.LFB0:
+	.section	__TEXT,__text,regular,pure_instructions
+	.build_version macos, 15, 0	sdk_version 15, 5
+	.globl	_main                           ## -- Begin function main
+	.p2align	4, 0x90
+_main:                                  ## @main
 	.cfi_startproc
+## %bb.0:
 	pushq	%rbp
 	.cfi_def_cfa_offset 16
-	.cfi_offset 6, -16
+	.cfi_offset %rbp, -16
 	movq	%rsp, %rbp
-	.cfi_def_cfa_register 6
-	subq	$32, %rsp
-	movq	%fs:40, %rax
-	movq	%rax, -8(%rbp)
-	xorl	%eax, %eax
-	movl	$4, -20(%rbp)
-	leaq	-20(%rbp), %rax
+	.cfi_def_cfa_register %rbp
+	movl	$0, -4(%rbp)
+	movl	$4, -8(%rbp)
+	leaq	-8(%rbp), %rax
 	movq	%rax, -16(%rbp)
-	movl	$0, %eax
-	movq	-8(%rbp), %rdx
-	subq	%fs:40, %rdx
-	je	.L3
-	call	__stack_chk_fail@PLT
-.L3:
-	leave
-	.cfi_def_cfa 7, 8
-	ret
+	xorl	%eax, %eax
+	popq	%rbp
+	retq
 	.cfi_endproc
-.LFE0:
-	.size	main, .-main
-	.ident	"GCC: (GNU) 15.1.1 20250425"
-	.section	.note.GNU-stack,"",@progbits
+                                        ## -- End function
+.subsections_via_symbols

@@ -2,10 +2,10 @@ section .data
 	LC_0 db "Value of s: %d", 0
 	LC_len_0 equ 16
 section .text
-	extern printf
-	extern malloc
-	global main
-main:
+	extern _printf
+	extern _malloc
+	global _main
+_main:
 	push rbp
 	mov rbp, rsp
 	sub rsp, 32
@@ -13,7 +13,7 @@ main:
 	; VARIABLE DECLARATION
 	mov rdi, 4
 	xor rax, rax
-	call malloc
+	call _malloc
 	mov rax, rax
 	mov QWORD [rbp-8], rax
 
@@ -78,7 +78,7 @@ main:
 	pop rcx
 	add rsi, rcx
 	xor rax, rax
-	call printf
+	call _printf
 	mov rax, rax
 
 	; Return Statement
