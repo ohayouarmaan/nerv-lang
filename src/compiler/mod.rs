@@ -9,6 +9,21 @@ pub struct Symbol {
     pub size: usize
 }
 
+pub enum SupportedTargets {
+    Linux,
+    Mac
+}
+
+#[cfg(target_os = "macos")]
+pub fn getCurrentTarget() -> SupportedTargets {
+    SupportedTargets::Mac
+}
+
+#[cfg(target_os = "linux")]
+pub fn getCurrentTarget() -> SupportedTargets {
+    SupportedTargets::Linux
+}
+
 #[allow(dead_code)]
 pub struct Compiler<'a> {
     pub prog: Program<'a>,
@@ -20,6 +35,7 @@ pub struct Compiler<'a> {
     pub text_section: Vec<String>,
     pub data_counter: usize,
     pub label_table: HashMap<String, Vec<String>>,
+    pub current_target: SupportedTargets
 }
 
 #[allow(dead_code)]
@@ -32,6 +48,8 @@ impl<'a> Compiler<'a> {
         let asm = vec![];
         let data_section = vec!["section .data\n".to_string()];
         let text_section = vec!["section .text\n".to_string()];
+        let current_target = getCurrentTarget();
+
         Ok(Self {
             prog: ast,
             file_handler: file,
@@ -41,7 +59,8 @@ impl<'a> Compiler<'a> {
             symbol_table: HashMap::new(),
             current_stack_offset: 0,
             data_counter: 0,
-            label_table: HashMap::new()
+            label_table: HashMap::new(),
+            current_target
         })
     }
 
@@ -50,14 +69,26 @@ impl<'a> Compiler<'a> {
         for statement in progs {
             if let Statement::FunctionDeclaration(fx) = &statement {
                 let compiled_fx = self.compile_function_declaration_statement(fx);
-                if let Ok((function_name, body)) = compiled_fx {
-                    self.text_section.push(format!("\tglobal {}\n", function_name).to_string());
-                    self.label_table.insert(function_name, body);
+                if let Ok((mut function_name, body)) = compiled_fx {
+                    let mut fx_name: String = "_".to_string();
+                    if let SupportedTargets::Mac = self.current_target {
+                        fx_name.push_str(&function_name);
+                    } else {
+                        fx_name = function_name;
+                    }
+                    self.text_section.push(format!("\tglobal {}\n", fx_name).to_string());
+                    self.label_table.insert(fx_name, body);
                 } else {
                     println!("Err: {:?}", compiled_fx);
                 }
             } else if let Statement::ExternStatement(ex) = &statement {
-                self.text_section.push(format!("\textern {}\n", ex.fx_name));
+                let mut fx_name: String = "_".to_string();
+                if let SupportedTargets::Mac = self.current_target {
+                    fx_name.push_str(ex.fx_name);
+                } else {
+                    fx_name = ex.fx_name.to_string()
+                };
+                self.text_section.push(format!("\textern {}\n", fx_name));
             }
         }
         self.asm.extend_from_slice(&self.data_section);
@@ -463,7 +494,13 @@ impl<'a> Compiler<'a> {
                     }
                 });
                 asms_main.push("\txor rax, rax\n".to_string());
-                asms_main.push(format!("\tcall {}\n", c.name));
+                let mut function_name: String = "_".to_string();
+                if let SupportedTargets::Linux = self.current_target {
+                    function_name = c.name.to_string();
+                } else {
+                    function_name.push_str(c.name);
+                }
+                asms_main.push(format!("\tcall {}\n", function_name));
                 asms_main.push(format!("\tmov {}, rax\n", register));
             }
             Expression::Unary(u) => {
