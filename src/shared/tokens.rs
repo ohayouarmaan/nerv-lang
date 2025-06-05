@@ -18,6 +18,7 @@ pub enum TokenType {
     At,
     Ampersand,
     Pound,
+    Colon,
 
     // One or two character tokens.
     Bang,
@@ -57,6 +58,7 @@ pub enum TokenType {
     Var,
     Dec,
     While,
+    Type,
 
     // Datatypes
     DInteger,
@@ -69,7 +71,7 @@ pub enum TokenType {
     Eof,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Token<T: Clone> {
     pub token_type: TokenType,
     pub position: Position,

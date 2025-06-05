@@ -100,6 +100,7 @@ impl<'a> Lexer<'a> {
             "void" => Ok(TokenType::DVoid),
             "extern" => Ok(TokenType::Extern),
             "unit" => Ok(TokenType::Void),
+            "type" => Ok(TokenType::Type),
             _ => Err(LexerError::IllegalKeyword),
         }
     }
@@ -216,6 +217,7 @@ impl<'a> Iterator for Lexer<'a> {
                     '@' => return self.generate_operator(lexeme_start, TokenType::At),
                     '&' => return self.generate_operator(lexeme_start, TokenType::Ampersand),
                     '#' => return self.generate_operator(lexeme_start, TokenType::Pound),
+                    ':' => return self.generate_operator(lexeme_start, TokenType::Colon),
 
                     // Words
                     'a' ..= 'z' | 'A' ..= 'Z' | '_' => return self.generate_keyword(lexeme_start).ok(),

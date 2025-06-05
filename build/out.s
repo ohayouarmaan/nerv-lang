@@ -4,12 +4,12 @@ section .data
 	LC_1 db "Value of dangling pointer: %d", 0
 	LC_len_1 equ 31
 section .text
-	extern _printf
-	extern _malloc
-	global _main
-	global _returnsPointerToAStackVariable
-	global _returnsPointerToAHeapAllocatedInt
-_returnsPointerToAHeapAllocatedInt:
+	extern printf
+	extern malloc
+	global main
+	global returnsPointerToAStackVariable
+	global returnsPointerToAHeapAllocatedInt
+returnsPointerToAHeapAllocatedInt:
 	push rbp
 	mov rbp, rsp
 	sub rsp, 32
@@ -18,7 +18,7 @@ _returnsPointerToAHeapAllocatedInt:
 	; VARIABLE DECLARATION
 	mov rdi, 4
 	xor rax, rax
-	call _malloc
+	call malloc
 	mov rax, rax
 	mov QWORD [rbp-12], rax
 
@@ -33,21 +33,21 @@ _returnsPointerToAHeapAllocatedInt:
 	mov rax, QWORD [rbp-12]
 	leave
 	ret
-_main:
+main:
 	push rbp
 	mov rbp, rsp
 	sub rsp, 32
 
 	; VARIABLE DECLARATION
 	xor rax, rax
-	call _returnsPointerToAHeapAllocatedInt
+	call returnsPointerToAHeapAllocatedInt
 	mov rax, rax
 	mov QWORD [rbp-8], rax
 
 
 	; VARIABLE DECLARATION
 	xor rax, rax
-	call _returnsPointerToAStackVariable
+	call returnsPointerToAStackVariable
 	mov rax, rax
 	mov QWORD [rbp-16], rax
 
@@ -56,21 +56,21 @@ _main:
 	mov rsi, QWORD [rbp-8]
 	mov rsi, [rsi]
 	xor rax, rax
-	call _printf
+	call printf
 	mov rax, rax
 ; Expression Statement
 	lea rdi, [rel LC_1]
 	mov rsi, QWORD [rbp-16]
 	mov rsi, [rsi]
 	xor rax, rax
-	call _printf
+	call printf
 	mov rax, rax
 
 	; Return Statement
 	mov rax, 0
 	leave
 	ret
-_returnsPointerToAStackVariable:
+returnsPointerToAStackVariable:
 	push rbp
 	mov rbp, rsp
 	sub rsp, 16

@@ -91,7 +91,7 @@ impl<'a> TypeChecker<'a> {
         match user_defined_type {
             TypedExpression::UserDefinedTypeAlias { identifier, .. } => {
                 if let Some(ut) = self.env.custom_types.get(&identifier) {
-                    self.compile_user_defined_type(ut.clone())
+                    ut.clone()
                 } else {
                     panic!("Unknown Type");
                 }
@@ -107,7 +107,7 @@ impl<'a> TypeChecker<'a> {
 
         let mut args = vec![];
         for param in &ex.fx_sig.args {
-            args.push(self.compile_user_defined_type(param.clone()));
+            args.push(param.clone());
         }
 
         let return_type = ex.fx_sig.return_type;
@@ -159,7 +159,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn type_check_function(&mut self, fx: FunctionDeclaration<'a>) {
-        let return_type = self.compile_user_defined_type(fx.return_type);
+        let return_type = fx.return_type;
         let old_env = self.env.clone();
         self.env.return_type = Some(return_type.clone());
 
@@ -168,7 +168,7 @@ impl<'a> TypeChecker<'a> {
             args.push(param.arg_type.clone());
             self.env
                 .vars
-                .insert(param.name.to_string(), self.compile_user_defined_type(param.arg_type.clone()));
+                .insert(param.name.to_string(), param.arg_type.clone());
         }
         
         self.type_check_block_statement(fx.body);
@@ -233,7 +233,7 @@ impl<'a> TypeChecker<'a> {
                 if let Some((result, args)) = self.env.functions.get(c.name) {
                     (0..c.arguments.len()).for_each(|i| {
                         let arg = c.arguments[i].clone();
-                        let arg_type = self.compile_user_defined_type(self.eval_expression(&arg));
+                        let arg_type = self.eval_expression(&arg);
                         if arg_type != args[i] {
                             panic!("Expected argument type to be {:?} instead got {:?} {}:{}", args[i], arg_type, c.position.line, c.position.column);
                         }

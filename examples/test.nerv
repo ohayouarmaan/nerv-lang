@@ -1,20 +1,24 @@
-extern printf(string, int) int;
+type customInt : int;
+type customIntTwo : customInt;
+
+extern printf(string, customInt) int;
 extern malloc(int) &int;
 
-@main() int {
-  dec validPointer &int = returnsPointerToAHeapAllocatedInt();
-  dec danglingPointer &int = returnsPointerToAStackVariable();
+
+@main() customInt {
+  dec validPointer &customInt = returnsPointerToAHeapAllocatedInt();
+  dec danglingPointer &customInt = returnsPointerToAStackVariable();
   printf("Value of valid pointer: %d", *validPointer);
   printf("Value of dangling pointer: %d", *danglingPointer);
   return 0;
 }
 
-@returnsPointerToAStackVariable() &int {
-  dec a int = 4;
+@returnsPointerToAStackVariable() &customIntTwo {
+  dec a customInt = 4;
   return &a;
 }
 
-@returnsPointerToAHeapAllocatedInt(int initialValue) &int {
+@returnsPointerToAHeapAllocatedInt(int initialValue) &customInt {
   dec x &int = malloc(4);
   *x = 45;
   return x;

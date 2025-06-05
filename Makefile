@@ -14,7 +14,7 @@ assemble:
 	nasm -f $(NASM_FORMAT) build/out.s -o build/out.o
 
 link:
-	gcc build/out.o -o build/out
+	gcc -no-pie build/out.o -o build/out
 	rm build/out.o
 
 clean:

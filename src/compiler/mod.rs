@@ -35,7 +35,8 @@ pub struct Compiler<'a> {
     pub text_section: Vec<String>,
     pub data_counter: usize,
     pub label_table: HashMap<String, Vec<String>>,
-    pub current_target: SupportedTargets
+    pub current_target: SupportedTargets,
+    pub custom_types: HashMap<String, TypedExpression>
 }
 
 #[allow(dead_code)]
@@ -60,7 +61,8 @@ impl<'a> Compiler<'a> {
             current_stack_offset: 0,
             data_counter: 0,
             label_table: HashMap::new(),
-            current_target
+            current_target,
+            custom_types: HashMap::new()
         })
     }
 
@@ -69,7 +71,7 @@ impl<'a> Compiler<'a> {
         for statement in progs {
             if let Statement::FunctionDeclaration(fx) = &statement {
                 let compiled_fx = self.compile_function_declaration_statement(fx);
-                if let Ok((mut function_name, body)) = compiled_fx {
+                if let Ok((function_name, body)) = compiled_fx {
                     let mut fx_name: String = "_".to_string();
                     if let SupportedTargets::Mac = self.current_target {
                         fx_name.push_str(&function_name);
@@ -138,12 +140,22 @@ impl<'a> Compiler<'a> {
             panic!("{:?}", compiled_lhs);
         }
     }
-    
+
+    pub fn compile_user_defined_type(&mut self, ut: &TypedExpression) -> TypedExpression {
+        match ut {
+            TypedExpression::UserDefinedTypeAlias { alias_for, .. } => {
+                self.compile_user_defined_type(&*alias_for)
+            }
+            _ => {
+                ut.clone()
+            }
+        }
+    }
 
     pub fn compile_variable_declaration_statement(&mut self, stmt: &VarDeclarationStatement<'a>) -> Result<Vec<String>, CompilerError> {
         let mut asms_main = vec!["\n\t; VARIABLE DECLARATION\n".to_string()];
         asms_main.extend(self.compile_expression(&stmt.value, "rax")?);
-        match stmt.variable_type {
+        match &stmt.variable_type {
             TypedExpression::Integer => {
                 self.current_stack_offset -= SIZES.d_int as isize;
                 self.symbol_table.insert(stmt.name, Symbol {
@@ -176,6 +188,37 @@ impl<'a> Compiler<'a> {
                 });
                 asms_main.push(format!("\tmov QWORD [rbp-{}], rax\n", self.current_stack_offset.abs()));
             },
+            TypedExpression::UserDefinedTypeAlias { .. } => {
+                let compiled_type_size = self.get_size_from_type(&stmt.variable_type);
+                match compiled_type_size {
+                    8 => {
+                        self.current_stack_offset -= SIZES.d_ptr as isize;
+                        self.symbol_table.insert(stmt.name, Symbol {
+                            offset: self.current_stack_offset,
+                            size: SIZES.d_ptr
+                        });
+                        asms_main.push(format!("\tmov QWORD [rbp-{}], rax\n", self.current_stack_offset.abs()));
+                    }
+                    4 => {
+                        self.current_stack_offset -= SIZES.d_int as isize;
+                        self.symbol_table.insert(stmt.name, Symbol {
+                            offset: self.current_stack_offset,
+                            size: SIZES.d_int
+                        });
+                        asms_main.push(format!("\tmov DWORD [rbp-{}], eax\n", self.current_stack_offset.abs()));
+                    }
+                    1 => {
+                        self.current_stack_offset -= SIZES.d_bool as isize;
+                        self.symbol_table.insert(stmt.name, Symbol {
+                            offset: self.current_stack_offset,
+                            size: SIZES.d_int
+                        });
+                        asms_main.push(format!("\tmov DWORD [rbp-{}], eax\n", self.current_stack_offset.abs()));
+
+                    }
+                    _ => todo!()
+                };
+            }
             _ => {
                 return Err(CompilerError::UnknownDataType);
             }
@@ -192,19 +235,23 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    pub fn get_size_from_type(&self, t: &TypedExpression) -> usize {
+        match t {
+            TypedExpression::Integer => SIZES.d_int,
+            TypedExpression::String => SIZES.d_ptr,
+            TypedExpression::Pointer(_) => SIZES.d_ptr,
+            TypedExpression::Void => SIZES.d_bool,
+            TypedExpression::Float => SIZES.d_float,
+            TypedExpression::UserDefinedTypeAlias { alias_for, .. } => self.get_size_from_type(&alias_for),
+        }
+    }
+
     pub fn compile_function_declaration_statement(&mut self, stmt: &FunctionDeclaration<'a>) -> Result<(String, Vec<String>), CompilerError> {
         let old_sp = self.current_stack_offset;
         self.current_stack_offset = 0;
         let mut total_arg_size = 0;
         for ar in stmt.arguments.clone() {
-            let arg_size = match ar.arg_type {
-                TypedExpression::Integer => SIZES.d_int,
-                TypedExpression::String => SIZES.d_ptr,
-                TypedExpression::Pointer(_) => SIZES.d_ptr,
-                TypedExpression::Void => SIZES.d_bool,
-                TypedExpression::Float => SIZES.d_float
-            };
-            
+            let arg_size = self.get_size_from_type(&ar.arg_type);
             total_arg_size += arg_size;
         }
 

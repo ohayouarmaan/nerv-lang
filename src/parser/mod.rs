@@ -2,7 +2,7 @@ use crate::{
     lexer::Lexer,
     shared::{
         meta::AnyMetadata, parser_nodes::{
-            Argument, BinaryExpression, BlockStatement, CallExpression, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, FunctionSignatureDeclaration, LiteralExpression, Program, ReturnStatement, Statement, TypedExpression, UnaryExpression, VarDeclarationStatement, VariableReassignmentStatement
+            Argument, BinaryExpression, BlockStatement, CallExpression, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, FunctionSignatureDeclaration, LiteralExpression, Program, ReturnStatement, Statement, TypedExpression, UnaryExpression, VarDeclarationStatement, VariableReassignmentStatement, TypeDeclarationStatement
         }, positions::Position, tokens::{
             Token,
             TokenType
@@ -10,12 +10,13 @@ use crate::{
     }
 };
 use core::panic;
-use std::iter::Peekable;
+use std::{collections::HashMap, iter::Peekable};
 
 #[allow(dead_code)]
 pub struct Parser<'a> {
     pub lexer: Peekable<Lexer<'a>>,
-    pub previous_token: Option<Token<AnyMetadata<'a>>>
+    pub previous_token: Option<Token<AnyMetadata<'a>>>,
+    pub custom_types: HashMap<String, TypedExpression>
 }
 
 
@@ -25,7 +26,8 @@ impl<'a> Parser<'a> {
         let lexer = Lexer::new(source_code).peekable();
         Self {
             lexer,
-            previous_token: None
+            previous_token: None,
+            custom_types: HashMap::new()
         }
     }
 
@@ -37,6 +39,52 @@ impl<'a> Parser<'a> {
 
         Program {
             stmts
+        }
+    }
+
+    fn tt_to_typed(&mut self, t: Token<AnyMetadata>) -> TypedExpression {
+        match t.token_type {
+            TokenType::DVoid => {
+                TypedExpression::Void
+            },
+            TokenType::DInteger => {
+                TypedExpression::Integer
+            },
+            TokenType::DString => {
+                TypedExpression::String
+            },
+            TokenType::DFloat => {
+                TypedExpression::Float
+            },
+            TokenType::Identifier => {
+                if let AnyMetadata::Identifier { value } = t.meta_data {
+                    return self.custom_types.get(value).expect("Unknown Type, you might want to define it before hand.").clone();
+                }
+                panic!("UNREACHABLE")
+            },
+            TokenType::Ampersand => {
+                let pointer_to = self.parse_type_expression();
+                TypedExpression::Pointer(Box::new(pointer_to))
+            }
+            _ => {
+                panic!("");
+            }
+        }
+    }
+
+    pub fn compile_user_defined_type(&self, user_defined_type: TypedExpression) -> TypedExpression {
+        match user_defined_type {
+            TypedExpression::UserDefinedTypeAlias { identifier, .. } => {
+                if let Some(ut) = self.custom_types.get(&identifier) {
+                    ut.clone()
+                } else {
+                    panic!("Unknown Type");
+                }
+            },
+            TypedExpression::Pointer(x) => {
+                TypedExpression::Pointer(Box::new(self.compile_user_defined_type(*x)))
+            }
+            _ => user_defined_type
         }
     }
 
@@ -118,6 +166,28 @@ impl<'a> Parser<'a> {
                         fx_sig
                     });
                 }
+
+                TokenType::Type => {
+                    self.consume(TokenType::Type);
+                    self.consume(TokenType::Identifier);
+                    let alias = self.previous_token.expect("UNREACHABLE");
+                    self.consume(TokenType::Colon);
+                    if self.match_tokens(&[TokenType::DInteger, TokenType::DString, TokenType::DFloat, TokenType::DVoid, TokenType::Identifier]){
+                        let alias_for = self.tt_to_typed(self.previous_token.expect("UNREACHABLE"));
+                        self.consume(TokenType::Semicolon);
+                        let t = TypeDeclarationStatement {
+                            alias,
+                            alias_for: alias_for.clone()
+                        };
+                        if let AnyMetadata::Identifier { value } = alias.meta_data {
+                            self.custom_types.insert(value.to_string(), TypedExpression::UserDefinedTypeAlias { identifier: value.to_string(), alias_for: Box::new(alias_for) });
+                        };
+                        return Statement::TypeDeclarationStatement(t)
+                    } else {
+                        panic!("Unexpected Type: {:?} expected a predefined type", self.lexer.peek());
+                    }
+                }
+
                 _ => {
                     let expr = self.parse_expression();
                     if self.match_tokens(&[TokenType::Equal]) {
@@ -129,7 +199,7 @@ impl<'a> Parser<'a> {
                                 rhs
                             })
                         } else {
-                            let position = self.previous_token.clone().unwrap().position;
+                            let position = self.previous_token.unwrap().position;
                             panic!("Trying to assign to something which can not be assigned, not an lvalue: {}:{}", position.line, position.column);
                         }
                     }
@@ -146,19 +216,7 @@ impl<'a> Parser<'a> {
 
     fn parse_type_expression(&mut self) -> TypedExpression {
         let current_token = self.lexer.next().unwrap();
-        match current_token.token_type {
-            TokenType::DInteger => TypedExpression::Integer,
-            TokenType::DFloat => TypedExpression::Float,
-            TokenType::DString => TypedExpression::String,
-            TokenType::DVoid => TypedExpression::Void,
-            TokenType::Ampersand => {
-                let pointer_to = self.parse_type_expression();
-                TypedExpression::Pointer(Box::new(pointer_to))
-            }
-            _ => {
-                panic!("Invalid type {:?} at {}:{}", current_token, current_token.position.line, current_token.position.column);
-            }
-        }
+        self.tt_to_typed(current_token)
     }
 
     fn consume(&mut self, tt: TokenType) {
@@ -253,17 +311,22 @@ impl<'a> Parser<'a> {
 
     }
 
+    pub fn calculate_size_from_type(&self, t: &TypedExpression) -> usize {
+        match t {
+            TypedExpression::Integer => 4,
+            TypedExpression::String => 8,
+            TypedExpression::Float => 8,
+            TypedExpression::Void => 1,
+            TypedExpression::Pointer(_) => 8,
+            TypedExpression::UserDefinedTypeAlias{ identifier: _, alias_for: u } => self.calculate_size_from_type(u),
+        }
+    }
+
     pub fn calculate_variables_size(&self, bs: &BlockStatement<'a>) -> usize {
         let mut size = 8;
         for stmt in &bs.values {
             if let Statement::VarDeclaration(VarDeclarationStatement { variable_type, .. }) = stmt {
-                size += match variable_type {
-                    TypedExpression::Integer => 4,
-                    TypedExpression::String => 8,
-                    TypedExpression::Float => 8,
-                    TypedExpression::Void => 1,
-                    TypedExpression::Pointer(_) => 8,
-                }
+                size += self.calculate_size_from_type(variable_type);
             }
         }
         size

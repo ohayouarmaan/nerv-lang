@@ -62,7 +62,14 @@ pub enum Statement<'a> {
     BlockStatement(BlockStatement<'a>),
     ReturnStatement(ReturnStatement<'a>),
     ExternStatement(ExternFunctionStatement<'a>),
-    VariableReassignmentStatement(VariableReassignmentStatement<'a>)
+    VariableReassignmentStatement(VariableReassignmentStatement<'a>),
+    TypeDeclarationStatement(TypeDeclarationStatement<'a>)
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeDeclarationStatement<'a> {
+    pub alias: Token<AnyMetadata<'a>>,
+    pub alias_for: TypedExpression
 }
 
 #[derive(Debug, Clone)]
@@ -139,7 +146,11 @@ pub enum TypedExpression {
     String,
     Float,
     Void,
-    Pointer(Box<TypedExpression>)
+    Pointer(Box<TypedExpression>),
+    UserDefinedTypeAlias {
+        identifier: String,
+        alias_for: Box<TypedExpression>
+    }
 }
 
 
