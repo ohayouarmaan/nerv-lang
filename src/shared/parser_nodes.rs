@@ -6,7 +6,8 @@ pub enum Expression<'a> {
     Binary(BinaryExpression<'a>),
     Unary(UnaryExpression<'a>),
     Literal(LiteralExpression<'a>),
-    Call(CallExpression<'a>)
+    Call(CallExpression<'a>),
+    Struct(StructExpression<'a>),
 }
 
 impl Expression<'_> {
@@ -45,6 +46,17 @@ pub struct CallExpression<'a> {
     pub position: Position
 }
 
+#[derive(Debug, Clone)]
+pub struct StructItemExpression<'a> {
+    pub field_name: &'a str,
+    pub field_value: Expression<'a>
+}
+
+#[derive(Debug, Clone)]
+pub struct StructExpression<'a> {
+    pub fields: Vec<StructItemExpression<'a>>
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Program<'a> {
@@ -63,7 +75,21 @@ pub enum Statement<'a> {
     ReturnStatement(ReturnStatement<'a>),
     ExternStatement(ExternFunctionStatement<'a>),
     VariableReassignmentStatement(VariableReassignmentStatement<'a>),
-    TypeDeclarationStatement(TypeDeclarationStatement<'a>)
+    TypeDeclarationStatement(TypeDeclarationStatement<'a>),
+    StructDeclarationStatement(StructDefinition<'a>),
+}
+
+#[derive(Debug, Clone)]
+pub struct StructItem<'a> {
+    pub name: &'a str,
+    pub item_type: TypedExpression,
+    pub value: Option<Expression<'a>>
+}
+
+#[derive(Debug, Clone)]
+pub struct StructDefinition<'a> {
+    pub name: &'a str,
+    pub fields: Vec<StructItem<'a>>
 }
 
 #[derive(Debug, Clone)]
@@ -141,6 +167,12 @@ pub struct ExternFunctionStatement<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParserTypedStructField {
+    pub field_type: Box<TypedExpression>,
+    pub field_name: String
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedExpression {
     Integer,
     String,
@@ -150,6 +182,9 @@ pub enum TypedExpression {
     UserDefinedTypeAlias {
         identifier: String,
         alias_for: Box<TypedExpression>
+    },
+    Struct {
+        fields: Vec<ParserTypedStructField>
     }
 }
 

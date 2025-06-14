@@ -37,6 +37,7 @@ pub enum TokenType {
     Float,
     Void,
     Character,
+    Struct,
 
     // Ffi Stuffs
     Extern,

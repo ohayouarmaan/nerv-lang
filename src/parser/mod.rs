@@ -2,7 +2,7 @@ use crate::{
     lexer::Lexer,
     shared::{
         meta::AnyMetadata, parser_nodes::{
-            Argument, BinaryExpression, BlockStatement, CallExpression, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, FunctionSignatureDeclaration, LiteralExpression, Program, ReturnStatement, Statement, TypedExpression, UnaryExpression, VarDeclarationStatement, VariableReassignmentStatement, TypeDeclarationStatement
+            Argument, BinaryExpression, BlockStatement, CallExpression, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, FunctionSignatureDeclaration, LiteralExpression, Program, ReturnStatement, Statement, StructDefinition, StructExpression, StructItem, StructItemExpression, TypeDeclarationStatement, TypedExpression, ParserTypedStructField, UnaryExpression, VarDeclarationStatement, VariableReassignmentStatement
         }, positions::Position, tokens::{
             Token,
             TokenType
@@ -10,7 +10,7 @@ use crate::{
     }
 };
 use core::panic;
-use std::{collections::HashMap, iter::Peekable};
+use std::{any::Any, collections::HashMap, iter::Peekable};
 
 #[allow(dead_code)]
 pub struct Parser<'a> {
@@ -70,6 +70,13 @@ impl<'a> Parser<'a> {
                 panic!("");
             }
         }
+    }
+
+    fn get_name_from_identifier(&self, t: Token<AnyMetadata<'a>>) -> &'a str {
+        if let Token { token_type: TokenType::Identifier, meta_data: AnyMetadata::Identifier { value: name }, .. } = t {
+            return name;
+        }
+        panic!("Not an identifier");
     }
 
     pub fn compile_user_defined_type(&self, user_defined_type: TypedExpression) -> TypedExpression {
@@ -166,7 +173,33 @@ impl<'a> Parser<'a> {
                         fx_sig
                     });
                 }
+                TokenType::Struct => {
+                    self.consume(TokenType::Struct);
+                    self.consume(TokenType::Identifier);
+                    let struct_name: &'a str = self.get_name_from_identifier(self.previous_token.unwrap());
 
+                    let mut fields: Vec<StructItem> = Vec::new();
+                    let mut typed_fields: Vec<ParserTypedStructField> = Vec::new();
+                    self.consume(TokenType::LeftBrace);
+                    while !self.match_tokens(&[TokenType::RightBrace]) {
+                        self.consume(TokenType::Identifier);
+                        let field_name = self.get_name_from_identifier(self.previous_token.unwrap());
+                        let field_type = self.parse_type_expression();
+                        let mut field_value: Option<Expression> = None;
+                        if self.match_tokens(&[TokenType::Equal]) {
+                            field_value = Some(self.parse_expression());
+                        }
+                        let copied_field_type = field_type.clone();
+                        fields.push(StructItem { name: field_name, item_type: field_type, value: field_value });
+                        typed_fields.push(ParserTypedStructField { field_type: Box::new(copied_field_type), field_name: field_name.to_string() });
+                        self.match_tokens(&[TokenType::Comma]);
+                    }
+                    self.custom_types.insert(struct_name.to_string(), TypedExpression::Struct { fields: typed_fields });
+                    return Statement::StructDeclarationStatement(StructDefinition {
+                        name: struct_name,
+                        fields
+                    });
+                }
                 TokenType::Type => {
                     self.consume(TokenType::Type);
                     self.consume(TokenType::Identifier);
@@ -319,6 +352,13 @@ impl<'a> Parser<'a> {
             TypedExpression::Void => 1,
             TypedExpression::Pointer(_) => 8,
             TypedExpression::UserDefinedTypeAlias{ identifier: _, alias_for: u } => self.calculate_size_from_type(u),
+            TypedExpression::Struct { fields } => {
+                let mut size = 0;
+                for field in fields {
+                    size += self.calculate_size_from_type(&field.field_type)
+                }
+                size
+            },
         }
     }
 
@@ -408,6 +448,19 @@ impl<'a> Parser<'a> {
                     value: tok
                 });
                 e
+            } else if tok.token_type == TokenType::LeftBrace {
+                let mut fields: Vec<StructItemExpression<'a>> = Vec::new();
+                while !self.match_tokens(&[TokenType::RightBrace]) {
+                    self.consume(TokenType::Identifier);
+                    let name = self.get_name_from_identifier(self.previous_token.unwrap());
+                    self.consume(TokenType::Colon);
+                    let field_value = self.parse_expression();
+                    fields.push(StructItemExpression { field_name: name, field_value: field_value });
+                    self.match_tokens(&[TokenType::Comma]);
+                }
+                return Expression::Struct(StructExpression {
+                    fields
+                });
             } else {
                 panic!("INVALID Primary Type: {:?} {}:{} ", tok, pos.line, pos.column);
             }

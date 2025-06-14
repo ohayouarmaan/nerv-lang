@@ -18,4 +18,4 @@ link:
 	rm build/out.o
 
 clean:
-	rm -f build/out build/out.o build/out.s
+	# rm -f build/out build/out.o build/out.s

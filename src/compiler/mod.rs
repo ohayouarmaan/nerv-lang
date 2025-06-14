@@ -243,6 +243,13 @@ impl<'a> Compiler<'a> {
             TypedExpression::Void => SIZES.d_bool,
             TypedExpression::Float => SIZES.d_float,
             TypedExpression::UserDefinedTypeAlias { alias_for, .. } => self.get_size_from_type(&alias_for),
+            TypedExpression::Struct { fields } => {
+                let mut size = 0;
+                for field in fields {
+                    size += self.get_size_from_type(t)
+                }
+                size
+            },
         }
     }
 
@@ -559,6 +566,11 @@ impl<'a> Compiler<'a> {
                         return self.compile_deref(&u.value, register)
                     }
                     _ => unimplemented!()
+                }
+            }
+            Expression::Struct(s) => {
+                for field in &s.fields {
+                    todo!();
                 }
             }
             _ => unimplemented!("Only number literals supported for now found: {:?}", expr),

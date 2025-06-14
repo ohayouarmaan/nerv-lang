@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 use crate::shared::{
     meta::AnyMetadata, parser_nodes::{
-        BlockStatement, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, Program, ReturnStatement, Statement, TypeDeclarationStatement, TypedExpression, VarDeclarationStatement, VariableReassignmentStatement
+        BlockStatement, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, ParserTypedStructField, Program, ReturnStatement, Statement, StructDefinition, TypeDeclarationStatement, TypedExpression, VarDeclarationStatement, VariableReassignmentStatement
     }, tokens::TokenType
 };
 
@@ -25,10 +25,17 @@ pub enum Declaration<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub struct TypedStructField {
+    pub field: String,
+    pub item_type: TypedExpression
+}
+
+#[derive(Debug, Clone)]
 pub struct TypeEnv {
     return_type: Option<TypedExpression>,
     vars: HashMap<String, TypedExpression>,
     functions: HashMap<String, (TypedExpression, Vec<TypedExpression>)>,
+    structs: HashMap<String, TypedStructField>,
     custom_types: HashMap<String, (TypedExpression)>
 }
 
@@ -40,6 +47,7 @@ impl<'a> TypeChecker<'a> {
                 return_type: None,
                 vars: HashMap::new(),
                 functions: HashMap::new(),
+                structs: HashMap::new(),
                 custom_types: HashMap::new(),
             },
         }
@@ -69,8 +77,15 @@ impl<'a> TypeChecker<'a> {
                 Statement::ExternStatement(ex) => self.type_check_extern_statement(ex),
                 Statement::VariableReassignmentStatement(vrs) => self.type_check_reassignment_statement(vrs),
                 Statement::TypeDeclarationStatement(tds) => self.check_type_declaration(&tds),
+                Statement::StructDeclarationStatement(sds) => self.type_check_struct_definition(sds),
             }
         }
+    }
+
+    pub fn type_check_struct_definition(&mut self, sds: StructDefinition) {
+        for field in sds.fields {
+            self.env.structs.insert(sds.name.to_string(), TypedStructField { field: field.name.to_string(), item_type: field.item_type });
+        };
     }
 
     pub fn check_type_declaration(&mut self, tds: &TypeDeclarationStatement) {
@@ -189,60 +204,60 @@ impl<'a> TypeChecker<'a> {
     fn eval_expression(&self, expr: &Expression<'a>) -> TypedExpression {
         match expr {
             Expression::Binary(binary_expression) => {
-                let lhs = self.eval_expression(&binary_expression.left);
-                let rhs = self.eval_expression(&binary_expression.right);
-                match (binary_expression.operator.token_type, lhs, rhs) {
-                    (TokenType::Plus | TokenType::Minus | TokenType::Star, TypedExpression::Integer, TypedExpression::Integer) => {
-                        TypedExpression::Integer
+                        let lhs = self.eval_expression(&binary_expression.left);
+                        let rhs = self.eval_expression(&binary_expression.right);
+                        match (binary_expression.operator.token_type, lhs, rhs) {
+                            (TokenType::Plus | TokenType::Minus | TokenType::Star, TypedExpression::Integer, TypedExpression::Integer) => {
+                                TypedExpression::Integer
+                            },
+                            (TokenType::Plus | TokenType::Minus | TokenType::Star, TypedExpression::Integer, TypedExpression::Float) => {
+                                TypedExpression::Float
+                            },
+                            (TokenType::Plus | TokenType::Minus | TokenType::Star, TypedExpression::Float, TypedExpression::Integer) => {
+                                TypedExpression::Float
+                            },
+                            (TokenType::Plus | TokenType::Minus | TokenType::Star, TypedExpression::Float, TypedExpression::Float) => {
+                                TypedExpression::Float
+                            },
+                            (TokenType::EqualEqual, _, _) => {
+                                TypedExpression::Float
+                            },
+                            (TokenType::Slash, _, _) => {
+                                TypedExpression::Float
+                            },
+                            _ => panic!("Type error in binary expression")
+                        }
                     },
-                    (TokenType::Plus | TokenType::Minus | TokenType::Star, TypedExpression::Integer, TypedExpression::Float) => {
-                        TypedExpression::Float
-                    },
-                    (TokenType::Plus | TokenType::Minus | TokenType::Star, TypedExpression::Float, TypedExpression::Integer) => {
-                        TypedExpression::Float
-                    },
-                    (TokenType::Plus | TokenType::Minus | TokenType::Star, TypedExpression::Float, TypedExpression::Float) => {
-                        TypedExpression::Float
-                    },
-                    (TokenType::EqualEqual, _, _) => {
-                        TypedExpression::Float
-                    },
-                    (TokenType::Slash, _, _) => {
-                        TypedExpression::Float
-                    },
-                    _ => panic!("Type error in binary expression")
-                }
-            },
             Expression::Unary(u) => {
-                match u.operator.token_type {
-                    TokenType::Ampersand => {
-                        let x = self.eval_expression(&u.value);
-                        TypedExpression::Pointer(Box::new(x))
-                    }
-                    TokenType::Star => {
-                        if let TypedExpression::Pointer(x) = self.eval_expression(&u.value) {
-                            *x
-                        } else {
-                            panic!("You're trying to deref a {:?} type", self.eval_expression(&u.value));
+                        match u.operator.token_type {
+                            TokenType::Ampersand => {
+                                let x = self.eval_expression(&u.value);
+                                TypedExpression::Pointer(Box::new(x))
+                            }
+                            TokenType::Star => {
+                                if let TypedExpression::Pointer(x) = self.eval_expression(&u.value) {
+                                    *x
+                                } else {
+                                    panic!("You're trying to deref a {:?} type", self.eval_expression(&u.value));
+                                }
+                            }
+                            _ => unimplemented!()
                         }
-                    }
-                    _ => unimplemented!()
-                }
-            },
+                    },
             Expression::Call(c) => {
-                if let Some((result, args)) = self.env.functions.get(c.name) {
-                    (0..c.arguments.len()).for_each(|i| {
-                        let arg = c.arguments[i].clone();
-                        let arg_type = self.compile_user_defined_type(self.eval_expression(&arg));
-                        if arg_type != args[i] {
-                            panic!("Expected argument type to be {:?} instead got {:?} {}:{}", args[i], arg_type, c.position.line, c.position.column);
+                        if let Some((result, args)) = self.env.functions.get(c.name) {
+                            (0..c.arguments.len()).for_each(|i| {
+                                let arg = c.arguments[i].clone();
+                                let arg_type = self.compile_user_defined_type(self.eval_expression(&arg));
+                                if arg_type != args[i] {
+                                    panic!("Expected argument type to be {:?} instead got {:?} {}:{}", args[i], arg_type, c.position.line, c.position.column);
+                                }
+                            });
+                            result.clone()
+                        } else {
+                            panic!("No such function exists.");
                         }
-                    });
-                    result.clone()
-                } else {
-                    panic!("No such function exists.");
-                }
-            },
+                    },
             Expression::Literal(literal_expression) => {
                 match literal_expression.value.token_type {
                     TokenType::Integer => TypedExpression::Integer,
@@ -266,6 +281,14 @@ impl<'a> TypeChecker<'a> {
                     _ => {
                         panic!("Unknown Literal Expression: {:?} {}:{}", literal_expression.value, literal_expression.value.position.line, literal_expression.value.position.column);
                     }
+                }
+            },
+            Expression::Struct(struct_expression) => {
+                TypedExpression::Struct {
+                    fields: struct_expression.fields.iter().map(|s| ParserTypedStructField {
+                        field_type: Box::new(self.eval_expression(&s.field_value)),
+                        field_name: s.field_name.to_string(),
+                    }).collect()
                 }
             },
         }
