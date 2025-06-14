@@ -101,6 +101,7 @@ impl<'a> Lexer<'a> {
             "extern" => Ok(TokenType::Extern),
             "unit" => Ok(TokenType::Void),
             "type" => Ok(TokenType::Type),
+            "struct" => Ok(TokenType::Struct),
             _ => Err(LexerError::IllegalKeyword),
         }
     }

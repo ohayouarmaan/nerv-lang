@@ -1,19 +1,28 @@
 type customInt : int;
 type customIntTwo : customInt;
+type customIntThree : customIntTwo;
 
-extern printf(string, customInt) int;
+extern printf(string, int) int;
 extern malloc(int) &int;
 
+struct Point {
+  x int,
+  y int,
+}
 
-@main() customInt {
+@main() customIntThree {
   dec validPointer &customInt = returnsPointerToAHeapAllocatedInt();
   dec danglingPointer &customInt = returnsPointerToAStackVariable();
-  printf("Value of valid pointer: %d", *validPointer);
-  printf("Value of dangling pointer: %d", *danglingPointer);
+  dec pone Point = {
+    x: 4,
+    y: 4
+  };
+  printf("Value of valid pointer: %d\n", *validPointer);
+  printf("Value of dangling pointer: %d\n", *danglingPointer);
   return 0;
 }
 
-@returnsPointerToAStackVariable() &customIntTwo {
+@returnsPointerToAStackVariable() &customIntThree {
   dec a customInt = 4;
   return &a;
 }
