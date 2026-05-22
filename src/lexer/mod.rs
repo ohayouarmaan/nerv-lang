@@ -70,7 +70,7 @@ impl<'a> Lexer<'a> {
             position: Position::new(self.current_line, starting_column),
             lexeme: (lexeme_start, lexeme_end),
             meta_data: AnyMetadata::String {
-                value: &self.source_code[lexeme_start..lexeme_end]
+                value: &self.source_code[lexeme_start+1..lexeme_end-1]
             }
         })
     }

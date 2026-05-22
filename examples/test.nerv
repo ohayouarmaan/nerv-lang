@@ -8,8 +8,8 @@ extern malloc(int) &int;
 @main() customInt {
   dec validPointer &customInt = returnsPointerToAHeapAllocatedInt();
   dec danglingPointer &customInt = returnsPointerToAStackVariable();
-  printf("Value of valid pointer: %d", *validPointer);
-  printf("Value of dangling pointer: %d", *danglingPointer);
+  printf("Value of valid pointer: %d\n", *validPointer);
+  printf("Value of dangling pointer: %d\n\n", *danglingPointer);
   return 0;
 }
 

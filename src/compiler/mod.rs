@@ -422,7 +422,6 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn compile_expression(&mut self, expr: &Expression<'a>, register: &'a str) -> Result<Vec<String>, CompilerError> {
-        println!("expr: {:?}, register: {:?}", expr, register);
         let mut asms_main = vec![];
         match expr {
             Expression::Binary(bin) => {
@@ -457,7 +456,6 @@ impl<'a> Compiler<'a> {
 
             Expression::Literal(lit) => match &lit.value.meta_data {
                 AnyMetadata::Number { value: NumberType::Integer(val) } => {
-                    dbg!(format!("\tmov {}, {}\n", register, val));
                     asms_main.push(format!("\tmov {}, {}\n", register, val));
                 }
                 AnyMetadata::Number { value: NumberType::Float(val) } => {
@@ -523,18 +521,40 @@ impl<'a> Compiler<'a> {
                     }
                 }
                 AnyMetadata::String { value } => {
-                    self.data_section.push(format!("\tLC_{} db {}, 0\n", self.data_counter, (*value)).to_string());
-                    self.data_section.push(format!("\tLC_len_{} equ {}\n", self.data_counter, (*value).len()).to_string());
-                    asms_main.push(format!("\tlea {}, [rel LC_{}]\n", register, self.data_counter).to_string());
-                    self.data_counter += 1; // Don't forget to increment!
+                    if (**value).contains("\\n") {
+                        let mut splitted_by_new_line: Vec<&str> = value.split("\\n").collect();
+                        if let Some(last) = splitted_by_new_line.last() && last == &"" {
+                            splitted_by_new_line.pop();
+                        }
+                        let mut lc = String::from(format!("\tLC_{} db ", self.data_counter));
+                        let mut x = String::new();
+                        for d in splitted_by_new_line {
+                            if(d != "") {
+                                let newd = d.replace("\"", "");
+                                x.push_str("\"");
+                                x.push_str(&newd);
+                                x.push_str("\"");
+                            }
+                            x.push_str(", 10");
+                        }
+                        x.push_str(", 0\n");
+                        lc.push_str(&x.to_string());
+                        self.data_section.push(lc);
+                        self.data_section.push(format!("\tLC_len_{} equ {}\n", self.data_counter, (*value).len()).to_string());
+                        asms_main.push(format!("\tlea {}, [rel LC_{}]\n", register, self.data_counter).to_string());
+                        self.data_counter += 1; // Don't forget to increment!
+                    } else {
+                        self.data_section.push(format!("\tLC_{} db \"{}\", 0\n", self.data_counter, (*value)).to_string());
+                        self.data_section.push(format!("\tLC_len_{} equ {}\n", self.data_counter, (*value).len()).to_string());
+                        asms_main.push(format!("\tlea {}, [rel LC_{}]\n", register, self.data_counter).to_string());
+                        self.data_counter += 1; // Don't forget to increment!
+                    }
                 }
                 _ => unimplemented!("Only number literals supported for now"),
             }
             Expression::Call(c) => {
                 let order = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
-                dbg!(&c);
                 (0..c.arguments.len()).for_each(|i| {
-                    println!("arg: {:?}, register: {:?}", &c.arguments[i], order[i]);
                     let value = self.compile_expression(&c.arguments[i], order[i]).expect("WTF");
                     for v in value {
                         asms_main.push(v);

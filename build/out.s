@@ -1,38 +1,14 @@
 section .data
-	LC_0 db "Value of valid pointer: %d", 0
+	LC_0 db "Value of valid pointer: %d", 10, 0
 	LC_len_0 equ 28
-	LC_1 db "Value of dangling pointer: %d", 0
-	LC_len_1 equ 31
+	LC_1 db "Value of dangling pointer: %d", 10, 10, 0
+	LC_len_1 equ 33
 section .text
 	extern printf
 	extern malloc
 	global main
 	global returnsPointerToAStackVariable
 	global returnsPointerToAHeapAllocatedInt
-returnsPointerToAHeapAllocatedInt:
-	push rbp
-	mov rbp, rsp
-	sub rsp, 32
-	mov DWORD [rbp-4], edi
-
-	; VARIABLE DECLARATION
-	mov rdi, 4
-	xor rax, rax
-	call malloc
-	mov rax, rax
-	mov QWORD [rbp-12], rax
-
-
-	; VARIABLE REASSIGNMENT
-	lea rbx, [rbp-12]
-	mov rbx, [rbx]
-	mov rdx, 45
-	mov [rbx], rdx
-
-	; Return Statement
-	mov rax, QWORD [rbp-12]
-	leave
-	ret
 main:
 	push rbp
 	mov rbp, rsp
@@ -83,5 +59,29 @@ returnsPointerToAStackVariable:
 	; Return Statement
 
 	lea rax, [rbp-4]
+	leave
+	ret
+returnsPointerToAHeapAllocatedInt:
+	push rbp
+	mov rbp, rsp
+	sub rsp, 32
+	mov DWORD [rbp-4], edi
+
+	; VARIABLE DECLARATION
+	mov rdi, 4
+	xor rax, rax
+	call malloc
+	mov rax, rax
+	mov QWORD [rbp-12], rax
+
+
+	; VARIABLE REASSIGNMENT
+	lea rbx, [rbp-12]
+	mov rbx, [rbx]
+	mov rdx, 45
+	mov [rbx], rdx
+
+	; Return Statement
+	mov rax, QWORD [rbp-12]
 	leave
 	ret

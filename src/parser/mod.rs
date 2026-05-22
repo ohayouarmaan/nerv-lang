@@ -224,7 +224,6 @@ impl<'a> Parser<'a> {
             if *token_type == tt {
                 self.previous_token = self.lexer.next();
             } else {
-                dbg!(token_type, meta_data);
                 panic!("Expected a {:?} found {:?} {:?}:{:?}", tt, *token_type, position.line, position.column);
             }
         }
@@ -244,7 +243,6 @@ impl<'a> Parser<'a> {
         } else {
             panic!("Expected function name identifier");
         };
-        println!("name: {:?}", name);
 
         self.consume(TokenType::LeftParen);
         let mut args = Vec::new();
@@ -297,7 +295,6 @@ impl<'a> Parser<'a> {
             let prev = self.previous_token.clone().expect("UNREACHABLE");
             if let AnyMetadata::Identifier { value: name } = &prev.meta_data {
                 let _ = self.match_tokens(&[TokenType::Comma]);
-                dbg!(&name, &arg_type);
                 Argument {
                     name,
                     arg_type
