@@ -1,12 +1,13 @@
 use core::panic;
 use std::{collections::HashMap, fs::File};
 use crate::shared::{
-    compiler_defaults::SIZES, errors::CompilerError, meta::{ AnyMetadata, NumberType }, parser_nodes::{Expression, ExpressionStatement, FunctionDeclaration, LiteralExpression, Program, ReturnStatement, Statement, TypedExpression, UnaryExpression, VarDeclarationStatement, VariableReassignmentStatement}, tokens::{Token, TokenType}
+    compiler_defaults::SIZES, errors::CompilerError, meta::{ AnyMetadata, NumberType }, parser_nodes::{Expression, ExpressionStatement, FieldAccessExpression, FunctionDeclaration, LiteralExpression, Program, ReturnStatement, Statement, StructDeclaration, StructLiteralExpression, TypedExpression, UnaryExpression, VarDeclarationStatement, VariableReassignmentStatement}, tokens::{Token, TokenType}
 };
 
 pub struct Symbol {
     pub offset: isize,
-    pub size: usize
+    pub size: usize,
+    pub var_type: TypedExpression
 }
 
 pub enum SupportedTargets {
@@ -36,7 +37,25 @@ pub struct Compiler<'a> {
     pub data_counter: usize,
     pub label_table: HashMap<String, Vec<String>>,
     pub current_target: SupportedTargets,
-    pub custom_types: HashMap<String, TypedExpression>
+    pub custom_types: HashMap<String, TypedExpression>,
+    pub struct_defs: HashMap<String, StructDef>
+}
+
+#[derive(Debug, Clone)]
+pub struct StructFieldDef {
+    pub name: String,
+    pub field_type: TypedExpression,
+    pub offset: usize,
+    pub size: usize,
+    pub align: usize
+}
+
+#[derive(Debug, Clone)]
+pub struct StructDef {
+    pub name: String,
+    pub fields: Vec<StructFieldDef>,
+    pub size: usize,
+    pub align: usize
 }
 
 #[allow(dead_code)]
@@ -62,7 +81,8 @@ impl<'a> Compiler<'a> {
             data_counter: 0,
             label_table: HashMap::new(),
             current_target,
-            custom_types: HashMap::new()
+            custom_types: HashMap::new(),
+            struct_defs: HashMap::new()
         })
     }
 
@@ -91,6 +111,13 @@ impl<'a> Compiler<'a> {
                     fx_name = ex.fx_name.to_string()
                 };
                 self.text_section.push(format!("\textern {}\n", fx_name));
+            } else if let Statement::TypeDeclarationStatement(tds) = &statement {
+                if let AnyMetadata::Identifier { value } = tds.alias.meta_data {
+                    self.custom_types.insert(value.to_string(), tds.alias_for.clone());
+                }
+            } else if let Statement::StructDeclaration(sd) = &statement {
+                let def = self.build_struct_def(sd.name, sd.fields.clone());
+                self.struct_defs.insert(sd.name.to_string(), def);
             }
         }
         self.asm.extend_from_slice(&self.data_section);
@@ -141,10 +168,23 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    pub fn compile_user_defined_type(&mut self, ut: &TypedExpression) -> TypedExpression {
+    pub fn compile_user_defined_type(&self, ut: &TypedExpression) -> TypedExpression {
         match ut {
             TypedExpression::UserDefinedTypeAlias { alias_for, .. } => {
                 self.compile_user_defined_type(&*alias_for)
+            }
+            TypedExpression::Pointer(inner) => {
+                TypedExpression::Pointer(Box::new(self.compile_user_defined_type(inner)))
+            }
+            TypedExpression::Function { args, return_type } => {
+                let resolved_args = args.iter()
+                    .map(|arg| self.compile_user_defined_type(arg))
+                    .collect();
+                let resolved_return = self.compile_user_defined_type(return_type);
+                TypedExpression::Function {
+                    args: resolved_args,
+                    return_type: Box::new(resolved_return)
+                }
             }
             _ => {
                 ut.clone()
@@ -152,75 +192,97 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn type_size_align(&self, t: &TypedExpression) -> (usize, usize) {
+        match t {
+            TypedExpression::Integer => (SIZES.d_int, SIZES.d_int),
+            TypedExpression::Float => (SIZES.d_float, SIZES.d_float),
+            TypedExpression::String => (SIZES.d_ptr, SIZES.d_ptr),
+            TypedExpression::Void => (SIZES.d_bool, SIZES.d_bool),
+            TypedExpression::Pointer(_) => (SIZES.d_ptr, SIZES.d_ptr),
+            TypedExpression::Function { .. } => (SIZES.d_ptr, SIZES.d_ptr),
+            TypedExpression::Struct { name } => {
+                let def = self.struct_defs.get(name)
+                    .unwrap_or_else(|| panic!("Unknown struct type {}", name));
+                (def.size, def.align)
+            }
+            TypedExpression::UserDefinedTypeAlias { alias_for, .. } => {
+                let resolved = self.compile_user_defined_type(alias_for);
+                self.type_size_align(&resolved)
+            }
+        }
+    }
+
+    fn allocate_stack_slot(&mut self, size: usize, align: usize) -> isize {
+        self.current_stack_offset -= size as isize;
+        let abs = self.current_stack_offset.abs() as usize;
+        let rem = abs % align;
+        if rem != 0 {
+            self.current_stack_offset -= (align - rem) as isize;
+        }
+        self.current_stack_offset
+    }
+
+    fn calculate_stack_size_for_function(&self, stmt: &FunctionDeclaration<'a>) -> usize {
+        let mut offset: isize = 0;
+        for arg in &stmt.arguments {
+            let arg_type = self.compile_user_defined_type(&arg.arg_type);
+            let (size, align) = self.type_size_align(&arg_type);
+            offset -= size as isize;
+            let abs = offset.abs() as usize;
+            let rem = abs % align;
+            if rem != 0 {
+                offset -= (align - rem) as isize;
+            }
+        }
+        for st in &stmt.body.values {
+            if let Statement::VarDeclaration(var) = st {
+                let var_type = self.compile_user_defined_type(&var.variable_type);
+                let (size, align) = self.type_size_align(&var_type);
+                offset -= size as isize;
+                let abs = offset.abs() as usize;
+                let rem = abs % align;
+                if rem != 0 {
+                    offset -= (align - rem) as isize;
+                }
+            }
+        }
+        self.align_bytes(offset.abs() as usize, 16)
+    }
+
     pub fn compile_variable_declaration_statement(&mut self, stmt: &VarDeclarationStatement<'a>) -> Result<Vec<String>, CompilerError> {
         let mut asms_main = vec!["\n\t; VARIABLE DECLARATION\n".to_string()];
-        asms_main.extend(self.compile_expression(&stmt.value, "rax")?);
-        match &stmt.variable_type {
-            TypedExpression::Integer => {
-                self.current_stack_offset -= SIZES.d_int as isize;
-                self.symbol_table.insert(stmt.name, Symbol {
-                    offset: self.current_stack_offset,
-                    size: SIZES.d_int
-                });
-                asms_main.push(format!("\tmov DWORD [rbp-{}], eax\n", self.current_stack_offset.abs()));
-            },
-            TypedExpression::Float => {
-                self.current_stack_offset -= SIZES.d_float as isize;
-                self.symbol_table.insert(stmt.name, Symbol {
-                    offset: self.current_stack_offset,
-                    size: SIZES.d_int
-                });
-                asms_main.push(format!("\tmov QWORD [rbp-{}], rax\n", self.current_stack_offset.abs()));
-            },
-            TypedExpression::String => {
-                self.current_stack_offset -= SIZES.d_ptr as isize;
-                self.symbol_table.insert(stmt.name, Symbol {
-                    offset: self.current_stack_offset,
-                    size: SIZES.d_ptr
-                });
-                asms_main.push(format!("\tmov QWORD [rbp-{}], rax\n", self.current_stack_offset.abs()));
-            },
-            TypedExpression::Pointer(_) => {
-                self.current_stack_offset -= SIZES.d_ptr as isize;
-                self.symbol_table.insert(stmt.name, Symbol {
-                    offset: self.current_stack_offset,
-                    size: SIZES.d_ptr
-                });
-                asms_main.push(format!("\tmov QWORD [rbp-{}], rax\n", self.current_stack_offset.abs()));
-            },
-            TypedExpression::UserDefinedTypeAlias { .. } => {
-                let compiled_type_size = self.get_size_from_type(&stmt.variable_type);
-                match compiled_type_size {
-                    8 => {
-                        self.current_stack_offset -= SIZES.d_ptr as isize;
-                        self.symbol_table.insert(stmt.name, Symbol {
-                            offset: self.current_stack_offset,
-                            size: SIZES.d_ptr
-                        });
-                        asms_main.push(format!("\tmov QWORD [rbp-{}], rax\n", self.current_stack_offset.abs()));
-                    }
-                    4 => {
-                        self.current_stack_offset -= SIZES.d_int as isize;
-                        self.symbol_table.insert(stmt.name, Symbol {
-                            offset: self.current_stack_offset,
-                            size: SIZES.d_int
-                        });
-                        asms_main.push(format!("\tmov DWORD [rbp-{}], eax\n", self.current_stack_offset.abs()));
-                    }
-                    1 => {
-                        self.current_stack_offset -= SIZES.d_bool as isize;
-                        self.symbol_table.insert(stmt.name, Symbol {
-                            offset: self.current_stack_offset,
-                            size: SIZES.d_int
-                        });
-                        asms_main.push(format!("\tmov DWORD [rbp-{}], eax\n", self.current_stack_offset.abs()));
-
-                    }
-                    _ => todo!()
-                };
-            }
-            _ => {
+        let resolved_type = self.compile_user_defined_type(&stmt.variable_type);
+        if let TypedExpression::Struct { name } = &resolved_type {
+            let (struct_size, struct_align) = {
+                let struct_def = self.struct_defs.get(name)
+                    .unwrap_or_else(|| panic!("Unknown struct type {}", name));
+                (struct_def.size, struct_def.align)
+            };
+            let offset = self.allocate_stack_slot(struct_size, struct_align);
+            self.symbol_table.insert(stmt.name, Symbol {
+                offset,
+                size: struct_size,
+                var_type: resolved_type.clone()
+            });
+            if let Expression::StructLiteral(lit) = &stmt.value {
+                self.emit_struct_literal_init(lit, offset, &mut asms_main)?;
+            } else {
                 return Err(CompilerError::UnknownDataType);
+            }
+        } else {
+            asms_main.extend(self.compile_expression(&stmt.value, "rax")?);
+            let (size, align) = self.type_size_align(&resolved_type);
+            let offset = self.allocate_stack_slot(size, align);
+            self.symbol_table.insert(stmt.name, Symbol {
+                offset,
+                size,
+                var_type: resolved_type
+            });
+            match size {
+                8 => asms_main.push(format!("\tmov QWORD [rbp{}], rax\n", offset)),
+                4 => asms_main.push(format!("\tmov DWORD [rbp{}], eax\n", offset)),
+                1 => asms_main.push(format!("\tmov BYTE [rbp{}], al\n", offset)),
+                _ => return Err(CompilerError::UnknownDataType),
             }
         }
         asms_main.push("\n".to_string());
@@ -243,19 +305,19 @@ impl<'a> Compiler<'a> {
             TypedExpression::Void => SIZES.d_bool,
             TypedExpression::Float => SIZES.d_float,
             TypedExpression::UserDefinedTypeAlias { alias_for, .. } => self.get_size_from_type(&alias_for),
+            TypedExpression::Function { .. } => SIZES.d_ptr,
+            TypedExpression::Struct { name } => {
+                let def = self.struct_defs.get(name)
+                    .unwrap_or_else(|| panic!("Unknown struct type {}", name));
+                def.size
+            }
         }
     }
 
     pub fn compile_function_declaration_statement(&mut self, stmt: &FunctionDeclaration<'a>) -> Result<(String, Vec<String>), CompilerError> {
         let old_sp = self.current_stack_offset;
         self.current_stack_offset = 0;
-        let mut total_arg_size = 0;
-        for ar in stmt.arguments.clone() {
-            let arg_size = self.get_size_from_type(&ar.arg_type);
-            total_arg_size += arg_size;
-        }
-
-        total_arg_size += stmt.variable_size;
+        let total_arg_size = self.calculate_stack_size_for_function(stmt);
 
         let mut body_stmts = vec![
             "\tpush rbp\n".to_string(),
@@ -266,18 +328,20 @@ impl<'a> Compiler<'a> {
             let order = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
             let order_32_bit = ["edi", "esi", "edx", "ecx", "e8", "e9"];
             (0..stmt.arity).for_each(|i| {
-                let (size, operand_size, register): (usize, &'a str, &'a str) = match stmt.arguments[i].arg_type {
-                    TypedExpression::Integer => (4, "DWORD", order_32_bit[i]),
-                    TypedExpression::Float => (8, "QWORD", order[i]),
-                    TypedExpression::String => (8, "QWORD", order[i]),
-                    TypedExpression::Pointer(_) => (8, "QWORD", order[i]),
+                let arg_type = self.compile_user_defined_type(&stmt.arguments[i].arg_type);
+                let (size, align) = self.type_size_align(&arg_type);
+                let (operand_size, register): (&'a str, &'a str) = match size {
+                    4 => ("DWORD", order_32_bit[i]),
+                    8 => ("QWORD", order[i]),
+                    1 => ("BYTE", order[i]),
                     _ => unimplemented!("Can not determine size of other things.")
                 };
-                self.current_stack_offset -= size as isize;
-                body_stmts.push(format!("\tmov {} [rbp-{}], {}\n", operand_size, self.current_stack_offset.abs(), register));
+                let offset = self.allocate_stack_slot(size, align);
+                body_stmts.push(format!("\tmov {} [rbp{}], {}\n", operand_size, offset, register));
                 self.symbol_table.insert(stmt.arguments[i].name, Symbol {
-                    offset: self.current_stack_offset,
-                    size
+                    offset,
+                    size,
+                    var_type: arg_type
                 });
             });
         }
@@ -338,6 +402,53 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn infer_expression_type(&self, expr: &Expression<'a>) -> TypedExpression {
+        match expr {
+            Expression::Literal(LiteralExpression {
+                value: Token { meta_data: AnyMetadata::Identifier { value }, .. },
+                ..
+            }) => {
+                if let Some(sym) = self.symbol_table.get(value) {
+                    sym.var_type.clone()
+                } else {
+                    panic!("Unknown variable: {}", value);
+                }
+            }
+            Expression::Unary(UnaryExpression { operator, value }) => {
+                match operator.token_type {
+                    TokenType::Ampersand => {
+                        let inner = self.infer_expression_type(value);
+                        TypedExpression::Pointer(Box::new(inner))
+                    }
+                    TokenType::Star => {
+                        if let TypedExpression::Pointer(inner) = self.infer_expression_type(value) {
+                            *inner
+                        } else {
+                            panic!("Trying to deref non-pointer");
+                        }
+                    }
+                    _ => panic!("Unsupported unary type inference")
+                }
+            }
+            Expression::FieldAccess(fa) => {
+                let target_type = self.infer_expression_type(&fa.target);
+                if let TypedExpression::Struct { name } = target_type {
+                    let def = self.struct_defs.get(&name)
+                        .unwrap_or_else(|| panic!("Unknown struct type {}", name));
+                    let field = def.fields.iter().find(|f| f.name == fa.field)
+                        .unwrap_or_else(|| panic!("Unknown field {} for struct {}", fa.field, name));
+                    field.field_type.clone()
+                } else {
+                    panic!("Field access on non-struct");
+                }
+            }
+            Expression::StructLiteral(sl) => {
+                TypedExpression::Struct { name: sl.name.to_string() }
+            }
+            _ => panic!("Unsupported expression type inference")
+        }
+    }
+
     fn get_register_info(&self, register: &str) -> Option<(usize, &str, &str, &str, &str)> {
         // Returns (size_bytes, 64bit, 32bit, 16bit, 8bit)
         match register {
@@ -371,6 +482,23 @@ impl<'a> Compiler<'a> {
             }) => {
                 self.emit_address_of_variable(name, register)
             },
+            Expression::FieldAccess(FieldAccessExpression { target, field, .. }) => {
+                let mut result = self.compile_address(target, register)?;
+                let target_type = self.infer_expression_type(target);
+                if let TypedExpression::Struct { name } = target_type {
+                    let def = self.struct_defs.get(&name)
+                        .unwrap_or_else(|| panic!("Unknown struct type {}", name));
+                    let field_def = def.fields.iter()
+                        .find(|f| f.name == *field)
+                        .unwrap_or_else(|| panic!("Unknown field {} for struct {}", field, name));
+                    if field_def.offset > 0 {
+                        result.push(format!("\tadd {}, {}\n", register, field_def.offset));
+                    }
+                    Ok(result)
+                } else {
+                    panic!("Field access on non-struct");
+                }
+            }
             Expression::Unary(UnaryExpression{ operator, value }) => {
                 match operator.token_type {
                     TokenType::Ampersand => {
@@ -516,7 +644,13 @@ impl<'a> Compiler<'a> {
                             }
                         }
                         None => {
-                            panic!("Unknown variable: '{}'", value);
+                            let mut function_name: String = "_".to_string();
+                            if let SupportedTargets::Linux = self.current_target {
+                                function_name = value.to_string();
+                            } else {
+                                function_name.push_str(value);
+                            }
+                            asms_main.push(format!("\tlea {}, [rel {}]\n", register, function_name));
                         }
                     }
                 }
@@ -561,13 +695,23 @@ impl<'a> Compiler<'a> {
                     }
                 });
                 asms_main.push("\txor rax, rax\n".to_string());
-                let mut function_name: String = "_".to_string();
-                if let SupportedTargets::Linux = self.current_target {
-                    function_name = c.name.to_string();
+                if let Expression::Literal(LiteralExpression { value: Token { meta_data: AnyMetadata::Identifier { value }, .. }, .. }) = &*c.callee {
+                    if self.symbol_table.contains_key(value) {
+                        asms_main.extend(self.compile_expression(&c.callee, "rax")?);
+                        asms_main.push("\tcall rax\n".to_string());
+                    } else {
+                        let mut function_name: String = "_".to_string();
+                        if let SupportedTargets::Linux = self.current_target {
+                            function_name = value.to_string();
+                        } else {
+                            function_name.push_str(value);
+                        }
+                        asms_main.push(format!("\tcall {}\n", function_name));
+                    }
                 } else {
-                    function_name.push_str(c.name);
+                    asms_main.extend(self.compile_expression(&c.callee, "rax")?);
+                    asms_main.push("\tcall rax\n".to_string());
                 }
-                asms_main.push(format!("\tcall {}\n", function_name));
                 asms_main.push(format!("\tmov {}, rax\n", register));
             }
             Expression::Unary(u) => {
@@ -581,9 +725,95 @@ impl<'a> Compiler<'a> {
                     _ => unimplemented!()
                 }
             }
+            Expression::FieldAccess(_) => {
+                let field_type = self.infer_expression_type(expr);
+                let (size, _) = self.type_size_align(&field_type);
+                let mut res = self.compile_address(expr, "rbx")?;
+                let reg_info = self.get_register_info(register)
+                    .ok_or_else(|| CompilerError::UnknownDataType)?;
+                let (target_reg_size, reg_64, reg_32, _reg_16, reg_8) = reg_info;
+                if size > target_reg_size {
+                    return Err(CompilerError::UnknownDataType);
+                }
+                match size {
+                    8 => res.push(format!("\tmov {}, QWORD [rbx]\n", reg_64)),
+                    4 => res.push(format!("\tmov {}, DWORD [rbx]\n", reg_32)),
+                    1 => {
+                        res.push(format!("\tmov {}, BYTE [rbx]\n", reg_8));
+                        if target_reg_size > 1 {
+                            res.push(format!("\tmovzx {}, {}\n", reg_64, reg_8));
+                        }
+                    }
+                    _ => return Err(CompilerError::UnknownDataType),
+                }
+                return Ok(res);
+            }
+            Expression::StructLiteral(_) => {
+                return Err(CompilerError::UnknownDataType);
+            }
             _ => unimplemented!("Only number literals supported for now found: {:?}", expr),
         }
         Ok(asms_main)
+    }
+
+    fn build_struct_def(&self, name: &str, fields: Vec<crate::shared::parser_nodes::StructField<'a>>) -> StructDef {
+        let mut layout_fields = vec![];
+        let mut offset = 0;
+        let mut max_align = 1;
+        for field in fields {
+            let field_type = self.compile_user_defined_type(&field.field_type);
+            let (size, align) = self.type_size_align(&field_type);
+            if align > max_align {
+                max_align = align;
+            }
+            let rem = offset % align;
+            if rem != 0 {
+                offset += align - rem;
+            }
+            layout_fields.push(StructFieldDef {
+                name: field.name.to_string(),
+                field_type,
+                offset,
+                size,
+                align
+            });
+            offset += size;
+        }
+        let final_rem = offset % max_align;
+        if final_rem != 0 {
+            offset += max_align - final_rem;
+        }
+        StructDef {
+            name: name.to_string(),
+            fields: layout_fields,
+            size: offset,
+            align: max_align
+        }
+    }
+
+    fn emit_struct_literal_init(&mut self, lit: &StructLiteralExpression<'a>, base_offset: isize, asms_main: &mut Vec<String>) -> Result<(), CompilerError> {
+        let struct_fields = {
+            let struct_def = self.struct_defs.get(lit.name)
+                .unwrap_or_else(|| panic!("Unknown struct type {}", lit.name));
+            struct_def.fields.clone()
+        };
+        for field in &lit.fields {
+            let field_def = struct_fields.iter()
+                .find(|f| f.name == field.name)
+                .unwrap_or_else(|| panic!("Unknown field {} for struct {}", field.name, lit.name));
+            let compiled_value = self.compile_expression(&field.value, "rax")?;
+            for asm in compiled_value {
+                asms_main.push(asm);
+            }
+            let field_offset = base_offset + field_def.offset as isize;
+            match field_def.size {
+                8 => asms_main.push(format!("\tmov QWORD [rbp{}], rax\n", field_offset)),
+                4 => asms_main.push(format!("\tmov DWORD [rbp{}], eax\n", field_offset)),
+                1 => asms_main.push(format!("\tmov BYTE [rbp{}], al\n", field_offset)),
+                _ => return Err(CompilerError::UnknownDataType),
+            }
+        }
+        Ok(())
     }
 }
 

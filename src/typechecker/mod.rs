@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::shared::{
     meta::AnyMetadata, parser_nodes::{
-        BlockStatement, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, Program, ReturnStatement, Statement, TypeDeclarationStatement, TypedExpression, VarDeclarationStatement, VariableReassignmentStatement
+        BlockStatement, Expression, ExpressionStatement, ExternFunctionStatement, FieldAccessExpression, FunctionDeclaration, Program, ReturnStatement, Statement, StructDeclaration, StructLiteralExpression, TypeDeclarationStatement, TypedExpression, VarDeclarationStatement, VariableReassignmentStatement
     }, tokens::TokenType
 };
 
@@ -29,7 +29,25 @@ pub struct TypeEnv {
     return_type: Option<TypedExpression>,
     vars: HashMap<String, TypedExpression>,
     functions: HashMap<String, (TypedExpression, Vec<TypedExpression>)>,
-    custom_types: HashMap<String, (TypedExpression)>
+    custom_types: HashMap<String, (TypedExpression)>,
+    struct_defs: HashMap<String, StructDef>
+}
+
+#[derive(Debug, Clone)]
+pub struct StructFieldDef {
+    pub name: String,
+    pub field_type: TypedExpression,
+    pub offset: usize,
+    pub size: usize,
+    pub align: usize
+}
+
+#[derive(Debug, Clone)]
+pub struct StructDef {
+    pub name: String,
+    pub fields: Vec<StructFieldDef>,
+    pub size: usize,
+    pub align: usize
 }
 
 impl<'a> TypeChecker<'a> {
@@ -41,6 +59,7 @@ impl<'a> TypeChecker<'a> {
                 vars: HashMap::new(),
                 functions: HashMap::new(),
                 custom_types: HashMap::new(),
+                struct_defs: HashMap::new()
             },
         }
     }
@@ -69,6 +88,7 @@ impl<'a> TypeChecker<'a> {
                 Statement::ExternStatement(ex) => self.type_check_extern_statement(ex),
                 Statement::VariableReassignmentStatement(vrs) => self.type_check_reassignment_statement(vrs),
                 Statement::TypeDeclarationStatement(tds) => self.check_type_declaration(&tds),
+                Statement::StructDeclaration(sd) => self.check_struct_declaration(sd),
             }
         }
     }
@@ -77,6 +97,11 @@ impl<'a> TypeChecker<'a> {
         if let AnyMetadata::Identifier { value } = tds.alias.meta_data {
             self.env.custom_types.insert(value.to_string(), tds.alias_for.clone());
         }
+    }
+
+    pub fn check_struct_declaration(&mut self, sd: StructDeclaration<'a>) {
+        let def = self.build_struct_def(sd.name, sd.fields);
+        self.env.struct_defs.insert(sd.name.to_string(), def);
     }
 
     pub fn type_check_reassignment_statement(&self, vrs: VariableReassignmentStatement<'a>) {
@@ -98,6 +123,16 @@ impl<'a> TypeChecker<'a> {
             },
             TypedExpression::Pointer(x) => {
                 TypedExpression::Pointer(Box::new(self.compile_user_defined_type(*x)))
+            }
+            TypedExpression::Function { args, return_type } => {
+                let resolved_args = args.into_iter()
+                    .map(|arg| self.compile_user_defined_type(arg))
+                    .collect();
+                let resolved_return = self.compile_user_defined_type(*return_type);
+                TypedExpression::Function {
+                    args: resolved_args,
+                    return_type: Box::new(resolved_return)
+                }
             }
             _ => user_defined_type
         }
@@ -230,7 +265,11 @@ impl<'a> TypeChecker<'a> {
                 }
             },
             Expression::Call(c) => {
-                if let Some((result, args)) = self.env.functions.get(c.name) {
+                let callee_type = self.compile_user_defined_type(self.eval_expression(&c.callee));
+                if let TypedExpression::Function { args, return_type } = callee_type {
+                    if args.len() != c.arguments.len() {
+                        panic!("Expected {} arguments got {}", args.len(), c.arguments.len());
+                    }
                     (0..c.arguments.len()).for_each(|i| {
                         let arg = c.arguments[i].clone();
                         let arg_type = self.compile_user_defined_type(self.eval_expression(&arg));
@@ -238,11 +277,11 @@ impl<'a> TypeChecker<'a> {
                             panic!("Expected argument type to be {:?} instead got {:?} {}:{}", args[i], arg_type, c.position.line, c.position.column);
                         }
                     });
-                    result.clone()
+                    *return_type
                 } else {
-                    panic!("No such function exists.");
+                    panic!("Trying to call a non-function type.");
                 }
-            },
+            }
             Expression::Literal(literal_expression) => {
                 match literal_expression.value.token_type {
                     TokenType::Integer => TypedExpression::Integer,
@@ -256,6 +295,11 @@ impl<'a> TypeChecker<'a> {
                                     return self.eval_custom_type(identifier).clone();
                                 }
                                 variable_type.clone()
+                            } else if let Some((return_type, args)) = self.env.functions.get(value) {
+                                TypedExpression::Function {
+                                    args: args.clone(),
+                                    return_type: Box::new(return_type.clone())
+                                }
                             } else {
                                 panic!("Unknown Variable {}:{}", literal_expression.value.position.line, literal_expression.value.position.column);
                             }
@@ -268,6 +312,91 @@ impl<'a> TypeChecker<'a> {
                     }
                 }
             },
+            Expression::StructLiteral(sl) => {
+                let struct_def = self.env.struct_defs.get(sl.name)
+                    .unwrap_or_else(|| panic!("Unknown struct type {}", sl.name));
+                if sl.fields.len() != struct_def.fields.len() {
+                    panic!("Struct literal missing fields {}", sl.name);
+                }
+                for field in &sl.fields {
+                    let expected_field = struct_def.fields.iter().find(|f| f.name == field.name)
+                        .unwrap_or_else(|| panic!("Unknown field {} for struct {}", field.name, sl.name));
+                    let value_type = self.compile_user_defined_type(self.eval_expression(&field.value));
+                    if value_type != expected_field.field_type {
+                        panic!("Struct field {} expects {:?} got {:?}", field.name, expected_field.field_type, value_type);
+                    }
+                }
+                TypedExpression::Struct { name: sl.name.to_string() }
+            }
+            Expression::FieldAccess(fa) => {
+                let target_type = self.compile_user_defined_type(self.eval_expression(&fa.target));
+                if let TypedExpression::Struct { name } = target_type {
+                    let struct_def = self.env.struct_defs.get(&name)
+                        .unwrap_or_else(|| panic!("Unknown struct type {}", name));
+                    if let Some(field) = struct_def.fields.iter().find(|f| f.name == fa.field) {
+                        field.field_type.clone()
+                    } else {
+                        panic!("Unknown field {} for struct {}", fa.field, name);
+                    }
+                } else {
+                    panic!("Field access on non-struct type");
+                }
+            }
+        }
+    }
+
+    fn type_size_align(&self, t: &TypedExpression) -> (usize, usize) {
+        match t {
+            TypedExpression::Integer => (4, 4),
+            TypedExpression::Float => (8, 8),
+            TypedExpression::String => (8, 8),
+            TypedExpression::Void => (1, 1),
+            TypedExpression::Pointer(_) => (8, 8),
+            TypedExpression::Function { .. } => (8, 8),
+            TypedExpression::Struct { name } => {
+                let def = self.env.struct_defs.get(name)
+                    .unwrap_or_else(|| panic!("Unknown struct type {}", name));
+                (def.size, def.align)
+            }
+            TypedExpression::UserDefinedTypeAlias { identifier, .. } => {
+                let resolved = self.eval_custom_type(identifier).clone();
+                self.type_size_align(&resolved)
+            }
+        }
+    }
+
+    fn build_struct_def(&self, name: &str, fields: Vec<crate::shared::parser_nodes::StructField<'a>>) -> StructDef {
+        let mut layout_fields = vec![];
+        let mut offset = 0;
+        let mut max_align = 1;
+        for field in fields {
+            let field_type = self.compile_user_defined_type(field.field_type);
+            let (size, align) = self.type_size_align(&field_type);
+            if align > max_align {
+                max_align = align;
+            }
+            let rem = offset % align;
+            if rem != 0 {
+                offset += align - rem;
+            }
+            layout_fields.push(StructFieldDef {
+                name: field.name.to_string(),
+                field_type,
+                offset,
+                size,
+                align
+            });
+            offset += size;
+        }
+        let final_rem = offset % max_align;
+        if final_rem != 0 {
+            offset += max_align - final_rem;
+        }
+        StructDef {
+            name: name.to_string(),
+            fields: layout_fields,
+            size: offset,
+            align: max_align
         }
     }
 }

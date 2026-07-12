@@ -2,7 +2,7 @@ use crate::{
     lexer::Lexer,
     shared::{
         meta::AnyMetadata, parser_nodes::{
-            Argument, BinaryExpression, BlockStatement, CallExpression, Expression, ExpressionStatement, ExternFunctionStatement, FunctionDeclaration, FunctionSignatureDeclaration, LiteralExpression, Program, ReturnStatement, Statement, TypedExpression, UnaryExpression, VarDeclarationStatement, VariableReassignmentStatement, TypeDeclarationStatement
+            Argument, BinaryExpression, BlockStatement, CallExpression, Expression, ExpressionStatement, ExternFunctionStatement, FieldAccessExpression, FunctionDeclaration, FunctionSignatureDeclaration, LiteralExpression, Program, ReturnStatement, Statement, StructDeclaration, StructField, StructLiteralExpression, StructLiteralField, TypeDeclarationStatement, TypedExpression, UnaryExpression, VarDeclarationStatement, VariableReassignmentStatement
         }, positions::Position, tokens::{
             Token,
             TokenType
@@ -65,6 +65,26 @@ impl<'a> Parser<'a> {
             TokenType::Ampersand => {
                 let pointer_to = self.parse_type_expression();
                 TypedExpression::Pointer(Box::new(pointer_to))
+            },
+            TokenType::Fun => {
+                self.consume(TokenType::LeftParen);
+                let mut args = vec![];
+                if !self.match_tokens(&[TokenType::RightParen]) {
+                    loop {
+                        args.push(self.parse_type_expression());
+                        if self.match_tokens(&[TokenType::Comma]) {
+                            continue;
+                        }
+                        self.consume(TokenType::RightParen);
+                        break;
+                    }
+                }
+                self.consume(TokenType::Arrow);
+                let return_type = self.parse_type_expression();
+                TypedExpression::Function {
+                    args,
+                    return_type: Box::new(return_type)
+                }
             }
             _ => {
                 panic!("");
@@ -187,6 +207,41 @@ impl<'a> Parser<'a> {
                         panic!("Unexpected Type: {:?} expected a predefined type", self.lexer.peek());
                     }
                 }
+                TokenType::Struct => {
+                    self.consume(TokenType::Struct);
+                    self.consume(TokenType::Identifier);
+                    let name_token = self.previous_token.expect("UNREACHABLE");
+                    let name = if let AnyMetadata::Identifier { value } = name_token.meta_data {
+                        value
+                    } else {
+                        panic!("Expected identifier");
+                    };
+                    self.consume(TokenType::LeftBrace);
+                    let mut fields = vec![];
+                    while !self.match_tokens(&[TokenType::RightBrace]) {
+                        self.consume(TokenType::Identifier);
+                        let field_name_token = self.previous_token.expect("UNREACHABLE");
+                        let field_name = if let AnyMetadata::Identifier { value } = field_name_token.meta_data {
+                            value
+                        } else {
+                            panic!("Expected identifier");
+                        };
+                        self.consume(TokenType::Colon);
+                        let field_type = self.parse_type_expression();
+                        fields.push(StructField {
+                            name: field_name,
+                            field_type
+                        });
+                        if self.match_tokens(&[TokenType::Comma]) {
+                            continue;
+                        }
+                    }
+                    self.custom_types.insert(name.to_string(), TypedExpression::Struct { name: name.to_string() });
+                    return Statement::StructDeclaration(StructDeclaration {
+                        name,
+                        fields
+                    });
+                }
 
                 _ => {
                     let expr = self.parse_expression();
@@ -254,12 +309,6 @@ impl<'a> Parser<'a> {
         let return_type = self.parse_type_expression();
 
         let body = self.parse_block_statement();
-        let var_size: usize =if let Statement::BlockStatement(bs) = &body {
-            self.calculate_variables_size(bs)
-        } else {
-            unreachable!()
-        };
-
         if let Statement::BlockStatement(body) = body {
             Statement::FunctionDeclaration(FunctionDeclaration {
                 name,
@@ -268,7 +317,7 @@ impl<'a> Parser<'a> {
                 body,
                 return_type,
                 position: starting_position,
-                variable_size: var_size
+                variable_size: 0
             })
         } else {
             panic!("UNREACHABLE");
@@ -316,6 +365,8 @@ impl<'a> Parser<'a> {
             TypedExpression::Void => 1,
             TypedExpression::Pointer(_) => 8,
             TypedExpression::UserDefinedTypeAlias{ identifier: _, alias_for: u } => self.calculate_size_from_type(u),
+            TypedExpression::Struct { .. } => 8,
+            TypedExpression::Function { .. } => 8,
         }
     }
 
@@ -357,7 +408,51 @@ impl<'a> Parser<'a> {
                 value: Box::from(self.unary())
             });
         }
-        self.primary()
+        self.postfix()
+    }
+
+    fn postfix(&mut self) -> Expression<'a> {
+        let mut expr = self.primary();
+        loop {
+            if self.match_tokens(&[TokenType::LeftParen]) {
+                let call_position = self.previous_token.expect("UNREACHABLE").position;
+                let mut args = vec![];
+                while let Some(t) = self.lexer.peek() {
+                    if t.token_type == TokenType::RightParen {
+                        break;
+                    }
+                    let arg = self.parse_expression();
+                    args.push(arg);
+                    if !self.match_tokens(&[TokenType::Comma]) {
+                        continue;
+                    }
+                }
+                let _ = self.lexer.next();
+                expr = Expression::Call(CallExpression {
+                    callee: Box::new(expr),
+                    arguments: args,
+                    position: call_position
+                });
+                continue;
+            }
+            if self.match_tokens(&[TokenType::Dot]) {
+                self.consume(TokenType::Identifier);
+                let field_token = self.previous_token.expect("UNREACHABLE");
+                let field = if let AnyMetadata::Identifier { value } = field_token.meta_data {
+                    value
+                } else {
+                    panic!("Expected identifier after '.'");
+                };
+                expr = Expression::FieldAccess(FieldAccessExpression {
+                    target: Box::new(expr),
+                    field,
+                    position: field_token.position
+                });
+                continue;
+            }
+            break;
+        }
+        expr
     }
 
     fn primary(&mut self) -> Expression<'a> {
@@ -365,35 +460,41 @@ impl<'a> Parser<'a> {
             self.previous_token = Some(*token);
             let tok = self.lexer.next().expect("UNREACHABLE");
             let pos = tok.position;
-            if  ([TokenType::Integer, TokenType::String, TokenType::Identifier, TokenType::String, TokenType::Void]).contains(&tok.token_type) {
-                if let Some(next_token) = self.lexer.peek()
-                    && next_token.token_type == TokenType::LeftParen {
-                        let prev = self.previous_token.unwrap();
-                        let _ = self.lexer.next();
-                        let (prev_name, pos) = if let AnyMetadata::Identifier{ value } = prev.meta_data {
-                            (value, prev.position)
-                        } else {
-                            panic!();
-                        };
-                        let mut args = vec![];
-                        while let Some(t) = self.lexer.peek() {
-                            if t.token_type == TokenType::RightParen {
-                                break;
-                            }
-                            let arg = self.parse_expression();
-                            args.push(arg);
-                            if !self.match_tokens(&[TokenType::Comma]) {
-                                continue;
-                            }
-                        }
-                        let _ = self.lexer.next();
-                        let e = Expression::Call(CallExpression {
-                            name: prev_name,
-                            arguments: args,
-                            position: pos
-                        });
-                        return e;
+            if tok.token_type == TokenType::Pound {
+                self.consume(TokenType::Identifier);
+                let struct_name_token = self.previous_token.expect("UNREACHABLE");
+                let struct_name = if let AnyMetadata::Identifier { value } = struct_name_token.meta_data {
+                    value
+                } else {
+                    panic!("Expected struct name after '#'");
+                };
+                self.consume(TokenType::LeftBrace);
+                let mut fields = vec![];
+                while !self.match_tokens(&[TokenType::RightBrace]) {
+                    self.consume(TokenType::Identifier);
+                    let field_name_token = self.previous_token.expect("UNREACHABLE");
+                    let field_name = if let AnyMetadata::Identifier { value } = field_name_token.meta_data {
+                        value
+                    } else {
+                        panic!("Expected field name");
+                    };
+                    self.consume(TokenType::Colon);
+                    let field_value = self.parse_expression();
+                    fields.push(StructLiteralField {
+                        name: field_name,
+                        value: field_value
+                    });
+                    if self.match_tokens(&[TokenType::Comma]) {
+                        continue;
                     }
+                }
+                return Expression::StructLiteral(StructLiteralExpression {
+                    name: struct_name,
+                    fields,
+                    position: pos
+                });
+            }
+            if ([TokenType::Integer, TokenType::String, TokenType::Identifier, TokenType::String, TokenType::Void]).contains(&tok.token_type) {
                 Expression::Literal(LiteralExpression {
                     value: tok
                 })

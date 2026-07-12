@@ -6,13 +6,16 @@ pub enum Expression<'a> {
     Binary(BinaryExpression<'a>),
     Unary(UnaryExpression<'a>),
     Literal(LiteralExpression<'a>),
-    Call(CallExpression<'a>)
+    Call(CallExpression<'a>),
+    StructLiteral(StructLiteralExpression<'a>),
+    FieldAccess(FieldAccessExpression<'a>)
 }
 
 impl Expression<'_> {
     pub fn is_lvalue(&self) -> bool {
         matches!(self, Self::Literal(LiteralExpression{ value: Token{ meta_data: AnyMetadata::Identifier{..}, .. }, .. }) 
-                | Self::Unary(UnaryExpression { operator: Token { token_type: TokenType::Star, ..}, .. }))
+                | Self::Unary(UnaryExpression { operator: Token { token_type: TokenType::Star, ..}, .. })
+                | Self::FieldAccess(_))
     }
 }
 
@@ -40,9 +43,32 @@ pub struct LiteralExpression<'a> {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct CallExpression<'a> {
-    pub name: &'a str,
+    pub callee: Box<Expression<'a>>,
     pub arguments: Vec<Expression<'a>>,
     pub position: Position
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct StructLiteralField<'a> {
+    pub name: &'a str,
+    pub value: Expression<'a>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct StructLiteralExpression<'a> {
+    pub name: &'a str,
+    pub fields: Vec<StructLiteralField<'a>>,
+    pub position: Position,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct FieldAccessExpression<'a> {
+    pub target: Box<Expression<'a>>,
+    pub field: &'a str,
+    pub position: Position,
 }
 
 #[allow(dead_code)]
@@ -63,13 +89,26 @@ pub enum Statement<'a> {
     ReturnStatement(ReturnStatement<'a>),
     ExternStatement(ExternFunctionStatement<'a>),
     VariableReassignmentStatement(VariableReassignmentStatement<'a>),
-    TypeDeclarationStatement(TypeDeclarationStatement<'a>)
+    TypeDeclarationStatement(TypeDeclarationStatement<'a>),
+    StructDeclaration(StructDeclaration<'a>)
 }
 
 #[derive(Debug, Clone)]
 pub struct TypeDeclarationStatement<'a> {
     pub alias: Token<AnyMetadata<'a>>,
     pub alias_for: TypedExpression
+}
+
+#[derive(Debug, Clone)]
+pub struct StructField<'a> {
+    pub name: &'a str,
+    pub field_type: TypedExpression,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructDeclaration<'a> {
+    pub name: &'a str,
+    pub fields: Vec<StructField<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -147,6 +186,13 @@ pub enum TypedExpression {
     Float,
     Void,
     Pointer(Box<TypedExpression>),
+    Struct {
+        name: String,
+    },
+    Function {
+        args: Vec<TypedExpression>,
+        return_type: Box<TypedExpression>
+    },
     UserDefinedTypeAlias {
         identifier: String,
         alias_for: Box<TypedExpression>

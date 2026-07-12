@@ -1,36 +1,23 @@
 section .data
-	LC_0 db "Value of valid pointer: %d", 10, 0
-	LC_len_0 equ 28
-	LC_1 db "Value of dangling pointer: %d", 10, 10, 0
-	LC_len_1 equ 33
+	LC_0 db "sum: %d", 10, 0
+	LC_len_0 equ 9
 section .text
 	extern printf
-	extern malloc
+	global add
 	global main
-	global returnsPointerToAStackVariable
-	global returnsPointerToAHeapAllocatedInt
-returnsPointerToAHeapAllocatedInt:
+add:
 	push rbp
 	mov rbp, rsp
-	sub rsp, 32
+	sub rsp, 16
 	mov DWORD [rbp-4], edi
-
-	; VARIABLE DECLARATION
-	mov rdi, 4
-	xor rax, rax
-	call malloc
-	mov rax, rax
-	mov QWORD [rbp-12], rax
-
-
-	; VARIABLE REASSIGNMENT
-	lea rbx, [rbp-12]
-	mov rbx, [rbx]
-	mov rdx, 45
-	mov [rbx], rdx
+	mov DWORD [rbp-8], esi
 
 	; Return Statement
-	mov rax, QWORD [rbp-12]
+	mov eax, DWORD [rbp-4]
+	push rax
+	mov eax, DWORD [rbp-8]
+	pop rcx
+	add rax, rcx
 	leave
 	ret
 main:
@@ -39,49 +26,39 @@ main:
 	sub rsp, 32
 
 	; VARIABLE DECLARATION
-	xor rax, rax
-	call returnsPointerToAHeapAllocatedInt
-	mov rax, rax
-	mov QWORD [rbp-8], rax
-
-
-	; VARIABLE DECLARATION
-	xor rax, rax
-	call returnsPointerToAStackVariable
-	mov rax, rax
-	mov QWORD [rbp-16], rax
-
-; Expression Statement
-	lea rdi, [rel LC_0]
-	mov rsi, QWORD [rbp-8]
-	mov rsi, [rsi]
-	xor rax, rax
-	call printf
-	mov rax, rax
-; Expression Statement
-	lea rdi, [rel LC_1]
-	mov rsi, QWORD [rbp-16]
-	mov rsi, [rsi]
-	xor rax, rax
-	call printf
-	mov rax, rax
-
-	; Return Statement
-	mov rax, 0
-	leave
-	ret
-returnsPointerToAStackVariable:
-	push rbp
-	mov rbp, rsp
-	sub rsp, 16
-
-	; VARIABLE DECLARATION
+	mov rax, 3
+	mov DWORD [rbp-8], eax
 	mov rax, 4
 	mov DWORD [rbp-4], eax
 
 
-	; Return Statement
+	; VARIABLE DECLARATION
+	lea rax, [rel add]
+	mov QWORD [rbp-16], rax
 
-	lea rax, [rbp-4]
+
+	; VARIABLE DECLARATION
+
+	lea rbx, [rbp-8]
+	mov edi, DWORD [rbx]
+
+	lea rbx, [rbp-8]
+	add rbx, 4
+	mov esi, DWORD [rbx]
+	xor rax, rax
+	mov rax, QWORD [rbp-16]
+	call rax
+	mov rax, rax
+	mov DWORD [rbp-20], eax
+
+; Expression Statement
+	lea rdi, [rel LC_0]
+	mov esi, DWORD [rbp-20]
+	xor rax, rax
+	call printf
+	mov rax, rax
+
+	; Return Statement
+	mov eax, DWORD [rbp-20]
 	leave
 	ret

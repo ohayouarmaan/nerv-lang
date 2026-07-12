@@ -1,25 +1,15 @@
-type customInt : int;
-type customIntTwo : customInt;
+struct Point { x: int, y: int }
 
-extern printf(string, customInt) int;
-extern malloc(int) &int;
+extern printf(string, int) int;
 
-
-@main() customInt {
-  dec validPointer &customInt = returnsPointerToAHeapAllocatedInt();
-  dec danglingPointer &customInt = returnsPointerToAStackVariable();
-  printf("Value of valid pointer: %d\n", *validPointer);
-  printf("Value of dangling pointer: %d\n\n", *danglingPointer);
-  return 0;
+@add(int a, int b) int {
+  return a + b;
 }
 
-@returnsPointerToAStackVariable() &customIntTwo {
-  dec a customInt = 4;
-  return &a;
-}
-
-@returnsPointerToAHeapAllocatedInt(int initialValue) &customInt {
-  dec x &int = malloc(4);
-  *x = 45;
-  return x;
+@main() int {
+  dec p Point = #Point { x: 3, y: 4 };
+  dec sumFn fn(int, int) -> int = add;
+  dec result int = sumFn(p.x, p.y);
+  printf("sum: %d\n", result);
+  return result;
 }

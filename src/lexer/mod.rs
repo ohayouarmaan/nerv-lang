@@ -81,6 +81,7 @@ impl<'a> Lexer<'a> {
             "else" => Ok(TokenType::Else),
             "false" => Ok(TokenType::False),
             "fun" => Ok(TokenType::Fun),
+            "fn" => Ok(TokenType::Fun),
             "for" => Ok(TokenType::For),
             "if" => Ok(TokenType::If),
             "nil" => Ok(TokenType::Nil),
@@ -101,6 +102,7 @@ impl<'a> Lexer<'a> {
             "extern" => Ok(TokenType::Extern),
             "unit" => Ok(TokenType::Void),
             "type" => Ok(TokenType::Type),
+            "struct" => Ok(TokenType::Struct),
             _ => Err(LexerError::IllegalKeyword),
         }
     }
@@ -211,9 +213,25 @@ impl<'a> Iterator for Lexer<'a> {
 
                     // Operators
                     '+' => return self.generate_operator(lexeme_start, TokenType::Plus),
-                    '-' => return self.generate_operator(lexeme_start, TokenType::Minus),
+                    '-' => {
+                        if let Some(next_ch) = self.source_code.chars().nth(self.position + 1) {
+                            if next_ch == '>' {
+                                self.advance().ok()?;
+                                self.advance().ok()?;
+                                let lexeme_ending = self.position;
+                                return Some(Token {
+                                    token_type: TokenType::Arrow,
+                                    position: Position::new(self.current_line, self.current_column),
+                                    lexeme: (lexeme_start, lexeme_ending),
+                                    meta_data: AnyMetadata::None
+                                });
+                            }
+                        }
+                        return self.generate_operator(lexeme_start, TokenType::Minus);
+                    }
                     '/' => return self.generate_operator(lexeme_start, TokenType::Slash),
                     '*' => return self.generate_operator(lexeme_start, TokenType::Star),
+                    '.' => return self.generate_operator(lexeme_start, TokenType::Dot),
                     '@' => return self.generate_operator(lexeme_start, TokenType::At),
                     '&' => return self.generate_operator(lexeme_start, TokenType::Ampersand),
                     '#' => return self.generate_operator(lexeme_start, TokenType::Pound),
