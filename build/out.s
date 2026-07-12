@@ -9,6 +9,30 @@ section .text
 	global main
 	global returnsPointerToAStackVariable
 	global returnsPointerToAHeapAllocatedInt
+returnsPointerToAHeapAllocatedInt:
+	push rbp
+	mov rbp, rsp
+	sub rsp, 32
+	mov DWORD [rbp-4], edi
+
+	; VARIABLE DECLARATION
+	mov rdi, 4
+	xor rax, rax
+	call malloc
+	mov rax, rax
+	mov QWORD [rbp-12], rax
+
+
+	; VARIABLE REASSIGNMENT
+	lea rbx, [rbp-12]
+	mov rbx, [rbx]
+	mov rdx, 45
+	mov [rbx], rdx
+
+	; Return Statement
+	mov rax, QWORD [rbp-12]
+	leave
+	ret
 main:
 	push rbp
 	mov rbp, rsp
@@ -59,29 +83,5 @@ returnsPointerToAStackVariable:
 	; Return Statement
 
 	lea rax, [rbp-4]
-	leave
-	ret
-returnsPointerToAHeapAllocatedInt:
-	push rbp
-	mov rbp, rsp
-	sub rsp, 32
-	mov DWORD [rbp-4], edi
-
-	; VARIABLE DECLARATION
-	mov rdi, 4
-	xor rax, rax
-	call malloc
-	mov rax, rax
-	mov QWORD [rbp-12], rax
-
-
-	; VARIABLE REASSIGNMENT
-	lea rbx, [rbp-12]
-	mov rbx, [rbx]
-	mov rdx, 45
-	mov [rbx], rdx
-
-	; Return Statement
-	mov rax, QWORD [rbp-12]
 	leave
 	ret

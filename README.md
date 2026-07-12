@@ -1,75 +1,92 @@
-# nerv 📀
-nerv is a compiled systems programming language inspired by Neon Genesis Evangelion — experimental, sharp, and minimal. Designed to give you low-level power with modern tooling, nerv compiles directly to x86_64 assembly for Linux and macOS.
+# nerv
 
-⚠️ Windows is not currently supported. It may be in the future once inline assembly and syscall support are stable.
+**nerv** is an experimental systems programming language inspired by *Neon Genesis Evangelion*. It's built for people who enjoy understanding what's happening under the hood. Instead of targeting a virtual machine or LLVM, **nerv** compiles directly to x86_64 assembly for Linux and macOS.
 
-### ✨ Features
-✅ Compiles to native x86_64 assembly (Linux + macOS)
+It's still in its early stages, but the goal is simple: build a language that stays close to the hardware without sacrificing a pleasant developer experience.
 
-✅ Links with libc (for now)
+> **Note:** Windows isn't supported yet. It'll likely arrive once inline assembly and direct syscall support are mature enough.
 
-✅ Written in Rust
+## Features
 
-✅ Supports C function calls via extern
+### Current
 
-✅ Built-in typechecker
+* Native x86_64 code generation for Linux and macOS
+* Written entirely in Rust
+* C interoperability through `extern`
+* Built-in type checker
+* Currently links against `libc`
 
-🔜 Planned support for inline assembly, syscalls, and a custom standard library
+### Planned
 
-### 🧪 Example
-```
+* Structs
+* Inline assembly
+* Direct Linux/macOS syscalls
+* Modules and imports
+* A custom standard library (removing the `libc` dependency)
+
+## Example
+
+```nerv
 extern printf(string, int) int;
 extern malloc(int) &int;
 
 @main() int {
-  dec validPointer &int = returnsPointerToAHeapAllocatedInt();
-  dec danglingPointer &int = returnsPointerToAStackVariable();
-  printf("Value of valid pointer: %d", *validPointer);
-  printf("Value of dangling pointer: %d", *danglingPointer);
-  return 0;
+    dec validPointer &int = returnsPointerToAHeapAllocatedInt();
+    dec danglingPointer &int = returnsPointerToAStackVariable();
+
+    printf("Value of valid pointer: %d", *validPointer);
+    printf("Value of dangling pointer: %d", *danglingPointer);
+
+    return 0;
 }
 
 @returnsPointerToAStackVariable() &int {
-  dec a int = 4;
-  return &a;
+    dec a int = 4;
+    return &a;
 }
 
-@returnsPointerToAHeapAllocatedInt(int initialValue) &int {
-  dec x &int = malloc(4);
-  *x = 45;
-  return x;
+@returnsPointerToAHeapAllocatedInt() &int {
+    dec x &int = malloc(4);
+    *x = 45;
+    return x;
 }
 ```
-### 📦 Building
-To build the compiler:
+
+## Building
+
 ```bash
 git clone https://github.com/ohayouarmaan/nerv-lang
 cd nerv-lang
-Make
+make
 ```
 
-### 🚀 Roadmap
-- [x]  C interop (via extern)
-- [x]  Type checking
-- [x]  Function compilation
-- [ ]  Structs
-- [ ]  Inline assembly
-- [ ]  Direct syscalls
-- [ ]  Windows support
-- [ ]  Custom standard library (drop libc)
-- [ ]  Modules and imports
+## Roadmap
 
-### ⚙️ Philosophy
+* [x] C interoperability (`extern`)
+* [x] Static type checking
+* [x] Function compilation
+* [ ] Structs
+* [ ] Inline assembly
+* [ ] Direct syscalls
+* [ ] Windows support
+* [ ] Custom standard library
+* [ ] Modules and imports
 
-nerv is a systems language that embraces the themes of Neon Genesis Evangelion — introspective, raw, and unafraid to break conventions.
+## Philosophy
 
-Simplicity wins — No unnecessary abstractions.
+I started **nerv** because I wanted to understand what a compiler actually does—from parsing source code all the way to emitting machine instructions. Over time it became much more than a learning project.
 
-You control the machine — Explicit memory, explicit types, explicit control.
+The language takes inspiration from the philosophy of *Neon Genesis Evangelion*: expose what's underneath, don't hide complexity, and embrace understanding over convenience.
 
-Platform-specific precision — Linux and macOS first.
+That translates into a few simple ideas:
 
-Self-reflective and powerful — Like its namesake, nerv aims to expose the machinery within.
-___
-📖 License
+* **Keep it small.** Every feature should earn its place.
+* **Stay close to the machine.** Memory, pointers, and control flow should be explicit.
+* **Be predictable.** What you write should closely match what the CPU executes.
+* **Learn by building.** The compiler is designed to be understandable, hackable, and fun to explore.
+
+nerv isn't trying to replace C or Rust. It's an experiment in language design, compiler construction, and systems programming—a playground for anyone curious about how software works beneath the abstractions.
+
+## License
+
 MIT License

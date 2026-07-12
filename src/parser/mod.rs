@@ -90,7 +90,7 @@ impl<'a> Parser<'a> {
 
     fn parse_statement(&mut self) -> Statement<'a> {
         if let Some(current_token) = self.lexer.peek() {
-            let starting_position = current_token.position.clone();
+            let starting_position = current_token.position;
             match current_token.token_type {
                 TokenType::Dec => {
 
@@ -330,51 +330,45 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self) -> Expression<'a> {
-        let t = self.equality();
-        t
+        self.equality()
     }
 
     fn equality(&mut self) -> Expression<'a> {
-        let e = self.create_binary_expr(vec![TokenType::BangEqual, TokenType::EqualEqual], Self::comparison);
-        e
+        self.create_binary_expr(vec![TokenType::BangEqual, TokenType::EqualEqual], Self::comparison)
     }
 
     fn comparison(&mut self) -> Expression<'a> {
-        let x = self.create_binary_expr(vec![TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual], Self::term);
-        x
+        self.create_binary_expr(vec![TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual], Self::term)
     }
 
     fn term(&mut self) -> Expression<'a> {
-        let x = self.create_binary_expr(vec![TokenType::Minus, TokenType::Plus], Self::factor);
-        x
+        self.create_binary_expr(vec![TokenType::Minus, TokenType::Plus], Self::factor)
     }
 
     fn factor(&mut self) -> Expression<'a> {
-        let t = self.create_binary_expr(vec![TokenType::Slash, TokenType::Star], Self::unary);
-        t
+        self.create_binary_expr(vec![TokenType::Slash, TokenType::Star], Self::unary)
     }
     
     fn unary(&mut self) -> Expression<'a> {
         if self.match_tokens(&[TokenType::Bang, TokenType::Minus, TokenType::Ampersand, TokenType::Star]) {
-            let operator = self.previous_token.clone().expect("No Previous token given.");
+            let operator = self.previous_token.expect("No Previous token given.");
             return Expression::Unary(UnaryExpression{
                 operator,
                 value: Box::from(self.unary())
             });
         }
-        let t = self.primary();
-        t
+        self.primary()
     }
 
     fn primary(&mut self) -> Expression<'a> {
         if let Some(token) = self.lexer.peek() {
-            self.previous_token = Some(token.clone());
+            self.previous_token = Some(*token);
             let tok = self.lexer.next().expect("UNREACHABLE");
-            let pos = tok.position.clone();
+            let pos = tok.position;
             if  ([TokenType::Integer, TokenType::String, TokenType::Identifier, TokenType::String, TokenType::Void]).contains(&tok.token_type) {
-                if let Some(next_token) = self.lexer.peek() {
-                    if next_token.token_type == TokenType::LeftParen {
-                        let prev = self.previous_token.clone().unwrap();
+                if let Some(next_token) = self.lexer.peek()
+                    && next_token.token_type == TokenType::LeftParen {
+                        let prev = self.previous_token.unwrap();
                         let _ = self.lexer.next();
                         let (prev_name, pos) = if let AnyMetadata::Identifier{ value } = prev.meta_data {
                             (value, prev.position)
@@ -400,11 +394,9 @@ impl<'a> Parser<'a> {
                         });
                         return e;
                     }
-                }
-                let e = Expression::Literal(LiteralExpression {
+                Expression::Literal(LiteralExpression {
                     value: tok
-                });
-                e
+                })
             } else {
                 panic!("INVALID Primary Type: {:?} {}:{} ", tok, pos.line, pos.column);
             }
@@ -420,7 +412,7 @@ impl<'a> Parser<'a> {
     ) -> Expression<'a> {
         let mut expr = precedent_function(self);
         while self.match_tokens(&match_tokens) {
-            let operator = self.previous_token.clone().expect("Token must exist here");
+            let operator = self.previous_token.expect("Token must exist here");
             let right_expression = precedent_function(self);
 
             expr = Expression::Binary(BinaryExpression {
@@ -433,11 +425,9 @@ impl<'a> Parser<'a> {
     }
 
     fn match_tokens(&mut self, to_match: &[TokenType]) -> bool {
-        if let Some(tok) = self.lexer.peek() {
-            if to_match.contains(&tok.token_type) {
-                self.previous_token = self.lexer.next();
-                return true;
-            }
+        if let Some(tok) = self.lexer.peek() && to_match.contains(&tok.token_type) {
+            self.previous_token = self.lexer.next();
+            return true;
         }
         false
     }
